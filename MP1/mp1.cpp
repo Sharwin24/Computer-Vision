@@ -15,7 +15,14 @@ int main(int argc, const char *argv[]) {
 
   if (images.empty()) {
     std::cerr << "Usage: " << argv[0] << " <image1.bmp> <image2.bmp> ...\n";
-    return 1;
+    std::cerr << "No images provided. Using hardcoded test images.\n";
+    // Use hardcoded test images if no arguments are provided
+    images = {
+      "test.bmp",
+      "face.bmp",
+      "gun.bmp",
+      "face_old.bmp"
+    };
   }
 
   std::vector<BMPImage> bmpImages;
@@ -23,7 +30,7 @@ int main(int argc, const char *argv[]) {
     try {
       BMPImage bmp(image.c_str());
       bmp.printInfo();
-      bmp.printPixelData();
+      // bmp.printPixelData();
       bmpImages.push_back(bmp);
     } catch (const std::exception& e) {
       std::cerr << "Error processing " << image << ": " << e.what() << "\n";

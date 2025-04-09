@@ -6,7 +6,6 @@
 #include <vector>
 
 #pragma pack(push, 1) // Ensure no padding is added to the structures
-#pragma pack(pop) // Restore the previous packing alignment
 
 #define BMFILETYPE 0x4D42 // 'BM' in ASCII
 
@@ -43,6 +42,8 @@ struct BMPColorHeader {
   uint32_t color_space_type{0x73524742}; // Default "sRGB" (0x73524742)
   uint32_t unused[16]{0};                // Unused data for sRGB color space
 };
+#pragma pack(pop) // Restore the previous packing alignment
+
 
 // --------------- END_CITATION [1] ---------------- //
 
@@ -52,6 +53,7 @@ public:
 
   BMPImage(const char* filename) {
     this->read(filename);
+    this->name = getImageName(filename);
   }
 
   ~BMPImage() {
@@ -63,11 +65,12 @@ public:
   }
 
   void printInfo() const {
+    std::cout << "BMP Image: " << name << "\n";
     std::cout << "File Size: " << fileHeader.file_size << " bytes\n";
     std::cout << "Width: " << infoHeader.width << " pixels\n";
     std::cout << "Height: " << infoHeader.height << " pixels\n";
     std::cout << "Bit Count: " << infoHeader.bit_count << "\n";
-    std::cout << "Compression: " << infoHeader.compression << "\n";
+    std::cout << "Compression: " << infoHeader.compression << "\n\n";
   }
 
   void printPixelData() const {
@@ -85,6 +88,22 @@ private:
   BMPInfoHeader infoHeader;
   BMPColorHeader colorHeader;
   std::vector<uint8_t> pixelData; // Pixel data
+  std::string name;
+
+  std::string getImageName(const char* filename) {
+    // Extract the image name from the filename
+    // "test.bmp" -> "test"
+    std::string fname = filename;
+    size_t pos = fname.find_last_of('/');
+    if (pos != std::string::npos) {
+      fname = fname.substr(pos + 1);
+    }
+    pos = fname.find_last_of('.');
+    if (pos != std::string::npos && fname.substr(pos) == ".bmp") {
+      fname = fname.substr(0, pos);
+    }
+    return fname;
+  }
 
   void read(const char* filename) {
     // Open the file in binary mode
