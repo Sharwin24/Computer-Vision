@@ -4,6 +4,7 @@
 #include <iostream>
 #include <fstream>
 #include <vector>
+#include <set>
 
 #pragma pack(push, 1) // Ensure no padding is added to the structures
 
@@ -47,6 +48,12 @@ struct BMPColorHeader {
 
 // --------------- END_CITATION [1] ---------------- //
 
+struct Component {
+  int label;
+  int area; // Number of pixels in the component
+  std::vector<int> pixels; // List of pixel indices in the component
+};
+
 class BMPImage {
 public:
   BMPImage() = delete;
@@ -69,6 +76,7 @@ public:
     std::cout << "Bit Count: " << this->infoHeader.bit_count << "\n";
     std::cout << "Compression: " << this->infoHeader.compression << "\n\n";
   }
+
   void printPixelData() const {
     std::cout << "Pixel Data:\n";
     for (size_t i = 0; i < this->pixelData.size(); ++i) {
@@ -77,6 +85,152 @@ public:
         std::cout << "\n";
       }
     }
+    std::cout << "\n";
+  }
+
+  void connectedComponentLabeling() {
+    // Perform connected component labeling
+    // Return the number of connected components found
+    // Create a new image with colored components and/or grayscaled components
+    //TODO: Implement connected component labeling
+
+    // The parent vector for union-find
+    const int W = this->infoHeader.width;
+    const int H = std::abs(this->infoHeader.height);
+    std::vector<int> parent(W * H, 0);
+    std::vector<int> labels(W * H, 0);
+
+    // Helper function to find the root label
+    auto findLabel = [](const std::vector<int>& parent, int label) {
+      // Find the root label
+      while (parent[label] != label) {
+        label = parent[label];
+      }
+      return label;
+    };
+
+    // Helper function to union two labels and make them equivalent
+    auto unionLabels = [&findLabel](std::vector<int>& parent, int a, int b) {
+      // Union two labels
+      int rootA = findLabel(parent, a);
+      int rootB = findLabel(parent, b);
+      if (rootA != rootB) {
+      parent[rootB] = rootA;
+      }
+    };
+
+    int labelCount = 1;
+
+    // First Pass: Assign labels and record label equivalences
+    for (int y = 0; y < H; ++y) {
+      for (int x = 0; x < W; ++x) {
+        // Get the pixel index
+        int index = y * W + x;
+
+        // Only process foreground pixels (non-zero)
+        if (this->pixelData[index] == 0) {
+          continue;
+        }
+
+        // Check neighbors with zero padding
+        int left = 0;
+        int top = 0;
+        try {
+          left = (x > 0) ? labels[y * W + (x - 1)] : 0;
+          top = (y > 0) ? labels[(y - 1) * W + x] : 0;
+        } catch (const std::out_of_range& e) {
+          std::cerr << "Index out of range: " << e.what() << "\n";
+          continue;
+        }
+        
+        
+        // Perform update
+        if (left == 0 && top == 0) {
+          // L(u,v) = Label + 1
+          labels[index] = labelCount;
+          parent[labelCount] = labelCount;
+          labelCount++;
+        } else if (left != 0 && top == 0) {
+          // Only left neighbor
+          // L(u,v) = max(topLabel, leftLabel)
+          labels[index] = left;
+        } else if (left == 0 && top != 0) {
+          // Only top neighbor
+          // L(u,v) = max(topLabel, leftLabel)
+          labels[index] = top;
+        } else { // (left != 0 && top != 0)
+          // Both neighbors
+          // topLabel = leftLabel
+          // topLabel != leftLabel(E_table)
+          labels[index] = std::min(left, top);
+          // Union the labels
+          unionLabels(parent, left, top);
+        }
+      }
+    }
+
+    // Second Pass: Resolve equivalences
+    for (int i = 0; i < labels.size(); ++i) {
+      if (labels[i] != 0) {
+        labels[i] = findLabel(parent, labels[i]);
+      }
+    }
+
+    // Count the number of unique labels
+    std::set<int> uniqueLabels(labels.begin(), labels.end());
+    int numComponents = uniqueLabels.size() - 1; // Exclude background label (0)
+    std::cout << "Number of connected components: " << numComponents << "\n";
+
+    // Create Component objects
+    this->components.clear();
+    this->components.reserve(numComponents);
+    for (int i = 0; i < numComponents; ++i) {
+      this->components.emplace_back();
+      this->components[i].label = i + 1;
+      this->components[i].area = 0;
+    }
+
+    // Populate the components with pixel data
+    for (int i = 0; i < labels.size(); ++i) {
+      if (labels[i] != 0) {
+        int label = labels[i];
+        this->components[label - 1].pixels.push_back(i);
+        this->components[label - 1].area++;
+      }
+    }
+
+    std::cout << "Found " << this->components.size() << " connected components.\n";
+  }
+
+  void applySizeFilter(const int sizeThreshold = 10) {
+    // Apply a size filter to remove noise
+    std::vector<Component> filteredComponents;
+    filteredComponents.reserve(this->components.size());
+    std::cout << "Applying size filter with threshold: " << sizeThreshold << "\n";
+    std::cout << "Number of components before size filter: " << this->components.size() << "\n";
+    for (const auto& c : this->components) {
+      if (c.area >= sizeThreshold) {
+        filteredComponents.push_back(c);
+      }
+    }
+    std::cout << "Number of components after size filter: " << filteredComponents.size() << "\n";
+
+    // Create a new pixel data array for the filtered image
+    std::vector<uint8_t> filteredPixelData(this->pixelData.size(), 0);
+    for (const auto& c : filteredComponents) {
+      for (const auto& pixelIndex : c.pixels) {
+        filteredPixelData[pixelIndex] = 0; // Set the pixel to the background
+      }
+    }
+
+    // Update the pixel data with the filtered data
+    this->pixelData = filteredPixelData;
+    this->components = filteredComponents;
+    std::cout << "Filtered pixel data size: " << this->pixelData.size() << "\n";
+  }
+
+  std::string getName() const {
+    return this->name;
   }
 
 private:
@@ -85,6 +239,7 @@ private:
   BMPColorHeader colorHeader;
   std::vector<uint8_t> pixelData; // Pixel data
   std::string name;
+  std::vector<Component> components;
 
   std::string getImageName(const char* filename) {
     // Extract the image name from the filename

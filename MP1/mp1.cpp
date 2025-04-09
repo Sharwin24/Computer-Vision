@@ -32,6 +32,13 @@ int main(int argc, const char *argv[]) {
       bmp.printInfo();
       // bmp.printPixelData();
       bmpImages.push_back(bmp);
+      // Perform connected component labeling
+      bmp.connectedComponentLabeling();
+      // Apply size filter
+      bmp.applySizeFilter(10);
+      // Save the filtered image
+      std::string outputFilename = bmp.getName() + "_filtered.bmp";
+      bmp.save(outputFilename.c_str());
     } catch (const std::exception& e) {
       std::cerr << "Error processing " << image << ": " << e.what() << "\n";
     }
