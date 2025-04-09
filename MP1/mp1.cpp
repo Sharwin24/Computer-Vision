@@ -18,5 +18,17 @@ int main(int argc, const char *argv[]) {
     return 1;
   }
 
+  std::vector<BMPImage> bmpImages;
+  for (const auto& image : images) {
+    try {
+      BMPImage bmp(image.c_str());
+      bmp.printInfo();
+      bmp.printPixelData();
+      bmpImages.push_back(bmp);
+    } catch (const std::exception& e) {
+      std::cerr << "Error processing " << image << ": " << e.what() << "\n";
+    }
+  }
+
   return 0;
 }
