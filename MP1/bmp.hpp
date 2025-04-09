@@ -62,6 +62,24 @@ public:
     this->write(filename);
   }
 
+  void printInfo() const {
+    std::cout << "File Size: " << fileHeader.file_size << " bytes\n";
+    std::cout << "Width: " << infoHeader.width << " pixels\n";
+    std::cout << "Height: " << infoHeader.height << " pixels\n";
+    std::cout << "Bit Count: " << infoHeader.bit_count << "\n";
+    std::cout << "Compression: " << infoHeader.compression << "\n";
+  }
+
+  void printPixelData() const {
+    std::cout << "Pixel Data:\n";
+    for (size_t i = 0; i < pixelData.size(); ++i) {
+      std::cout << static_cast<int>(pixelData[i]) << " ";
+      if ((i + 1) % infoHeader.width == 0) {
+        std::cout << "\n";
+      }
+    }
+  }
+
 private:
   BMPFileHeader fileHeader;
   BMPInfoHeader infoHeader;
