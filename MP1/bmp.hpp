@@ -50,38 +50,12 @@ struct BMPColorHeader {
 class BMPImage {
 public:
   BMPImage() = delete;
+  BMPImage(const char* filename);
+  ~BMPImage() = default;
 
-  BMPImage(const char* filename) {
-    this->read(filename);
-    this->name = getImageName(filename);
-  }
-
-  ~BMPImage() {
-    // Destructor
-  }
-
-  void save(const char* filename) {
-    this->write(filename);
-  }
-
-  void printInfo() const {
-    std::cout << "BMP Image: " << name << "\n";
-    std::cout << "File Size: " << fileHeader.file_size << " bytes\n";
-    std::cout << "Width: " << infoHeader.width << " pixels\n";
-    std::cout << "Height: " << infoHeader.height << " pixels\n";
-    std::cout << "Bit Count: " << infoHeader.bit_count << "\n";
-    std::cout << "Compression: " << infoHeader.compression << "\n\n";
-  }
-
-  void printPixelData() const {
-    std::cout << "Pixel Data:\n";
-    for (size_t i = 0; i < pixelData.size(); ++i) {
-      std::cout << static_cast<int>(pixelData[i]) << " ";
-      if ((i + 1) % infoHeader.width == 0) {
-        std::cout << "\n";
-      }
-    }
-  }
+  void save(const char* filename);
+  void printInfo() const;
+  void printPixelData() const;
 
 private:
   BMPFileHeader fileHeader;
@@ -90,99 +64,10 @@ private:
   std::vector<uint8_t> pixelData; // Pixel data
   std::string name;
 
-  std::string getImageName(const char* filename) {
-    // Extract the image name from the filename
-    // "test.bmp" -> "test"
-    std::string fname = filename;
-    size_t pos = fname.find_last_of('/');
-    if (pos != std::string::npos) {
-      fname = fname.substr(pos + 1);
-    }
-    pos = fname.find_last_of('.');
-    if (pos != std::string::npos && fname.substr(pos) == ".bmp") {
-      fname = fname.substr(0, pos);
-    }
-    return fname;
-  }
+  std::string getImageName(const char* filename);
 
-  void read(const char* filename) {
-    // Open the file in binary mode
-    std::ifstream file(filename, std::ios::binary);
-    if (!file) {
-      throw std::runtime_error("Could not open file" + std::string(filename));
-    }
-    // Read File Header
-    file.read(reinterpret_cast<char*>(&fileHeader), sizeof(fileHeader));
-    if (fileHeader.file_type != BMFILETYPE) {
-      throw std::runtime_error(std::string(filename) + " is not a BMP file");
-    }
-
-    // Read Info Header
-    file.read(reinterpret_cast<char*>(&infoHeader), sizeof(infoHeader));
-
-    // Validate that image is uncompressed (Only 0 is supported)
-    if (infoHeader.compression != 0) {
-      throw std::runtime_error(std::string(filename) + " is not an uncompressed BMP file");
-    }
-
-    // If 32 bits per pixel, read the color header as well
-    if (infoHeader.bit_count == 32) {
-      file.read(reinterpret_cast<char*>(&colorHeader), sizeof(colorHeader));
-    }
-
-    // Move file pointer to beginning of pixel data
-    file.seekg(fileHeader.offset_data, std::ios::beg);
-
-    // Determine image size
-    if (infoHeader.size_image == 0) {
-      // For safety, use absolute heigh since BMP height can be negative
-      infoHeader.size_image = infoHeader.width * std::abs(infoHeader.height) * (infoHeader.bit_count / 8);
-    }
-
-    // Read the pixel data
-    pixelData.resize(infoHeader.size_image);
-    file.read(reinterpret_cast<char*>(pixelData.data()), infoHeader.size_image);
-    if (!file) {
-      throw std::runtime_error("Error reading pixel data from " + std::string(filename));
-    }
-
-    // Close the file
-    file.close();
-  }
-
-  void write(const char* filename) {
-    // Create output stream in binary mode
-    std::ofstream output(filename, std::ios::binary);
-    if (!output) {
-      throw std::runtime_error("Could not open file " + std::string(filename));
-    }
-
-    // Determine the offset for pixel data
-    this->fileHeader.offset_data = sizeof(BMPFileHeader) + sizeof(BMPInfoHeader);
-    if (infoHeader.bit_count == 32) {
-      // Only include color header if pixel depth is 32 bits
-      this->fileHeader.offset_data += sizeof(BMPColorHeader);
-    }
-
-    // Update file size
-    this->fileHeader.file_size = this->fileHeader.offset_data + static_cast<uint32_t>(pixelData.size());
-
-    // Write the headers
-    output.write(reinterpret_cast<const char*>(&fileHeader), sizeof(fileHeader));
-    output.write(reinterpret_cast<const char*>(&infoHeader), sizeof(infoHeader));
-    if (infoHeader.bit_count == 32) {
-      output.write(reinterpret_cast<const char*>(&colorHeader), sizeof(colorHeader));
-    }
-
-    // Write the pixel data
-    output.write(reinterpret_cast<const char*>(pixelData.data()), pixelData.size());
-    if (!output) {
-      throw std::runtime_error("Error writing pixel data to " + std::string(filename));
-    }
-
-    // Close the file
-    output.close();
-  }
+  void read(const char* filename);
+  void write(const char* filename);
 };
 
 
