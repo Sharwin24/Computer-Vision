@@ -102,8 +102,8 @@ public:
     }
     std::cout << std::endl;
 
-    // Print to log_cpp.txt
-    std::ofstream logFile("log_cpp.txt");
+    // Print to a log file to visually verify raw pixel data
+    std::ofstream logFile("test_cpp_raw.txt");
     if (logFile.is_open()) {
       logFile << "Pixel Data (2D):\n";
       for (const auto& row : this->pixelData2D) {
