@@ -112,7 +112,7 @@ public:
     std::cout << "Binary Image Size: " << numRows << " x " << numCols << std::endl;
     // First pass: Assign labels and record equivalences
     uint32_t label = 1;
-    std::vector<std::vector<int>> labeledImage(numRows, std::vector<int>(numCols, 1));
+    std::vector<std::vector<int>> labeledImage(numRows, std::vector<int>(numCols, 0));
     std::vector<int> parent(numRows * numCols + 1, 0);
     for (int i = 0; i < parent.size(); ++i) {
       parent[i] = i; // Initialize parent to itself
@@ -369,23 +369,11 @@ private:
     }
 
     // Read the pixel data
-    this->pixelData.resize(this->infoHeader.size_image);
-    file.read(reinterpret_cast<char*>(this->pixelData.data()), this->infoHeader.size_image);
-    if (!file) {
-      throw std::runtime_error("Error reading pixel data from " + std::string(filename));
-    }
-
-    // Check if the pixel data was read correctly
-    if (this->pixelData.size() != this->infoHeader.size_image) {
-      throw std::runtime_error("Error: Pixel data size mismatch in " + std::string(filename));
-    }
-
-    // Populate 2D pixel data representation that matches the image dimensions
-    this->pixelData2D.resize(std::abs(this->infoHeader.height), std::vector<int>(this->infoHeader.width, 0));
+    this->pixelData2D.resize(std::abs(this->infoHeader.height), std::vector<uint8_t>(this->infoHeader.width, 0));
     for (int i = 0; i < std::abs(this->infoHeader.height); ++i) {
-      for (int j = 0; j < this->infoHeader.width; ++j) {
-        int index = i * this->infoHeader.width + j;
-        this->pixelData2D[i][j] = this->pixelData[index];
+      file.read(reinterpret_cast<char*>(this->pixelData2D[i].data()), this->infoHeader.width);
+      if (!file) {
+        throw std::runtime_error("Error reading pixel data row from " + std::string(filename));
       }
     }
 
@@ -408,6 +396,10 @@ private:
     }
 
     // Update file size
+    std::vector<uint8_t> pixelData;
+    for (const auto& row : this->pixelData2D) {
+      pixelData.insert(pixelData.end(), row.begin(), row.end());
+    }
     this->fileHeader.file_size = this->fileHeader.offset_data + static_cast<uint32_t>(pixelData.size());
 
     // Write the headers
@@ -418,7 +410,7 @@ private:
     }
 
     // Write the pixel data
-    output.write(reinterpret_cast<const char*>(this->pixelData.data()), this->pixelData.size());
+    output.write(reinterpret_cast<const char*>(pixelData.data()), pixelData.size());
     if (!output) {
       throw std::runtime_error("Error writing pixel data to " + std::string(filename));
     }
