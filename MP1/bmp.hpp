@@ -273,8 +273,74 @@ public:
   }
 
   void colorizeComponents() {
-    // For the components that we found, create one image
-    // where each component is in a different color or grayscale intensity
+    // Sort the components by label
+    std::sort(this->components.begin(), this->components.end(),
+      [](const Component& a, const Component& b) {
+      return a.label < b.label;
+    });
+
+    // Collect unique labels from sorted components
+    std::set<uint32_t> uniqueLabels;
+    for (const auto& c : this->components) {
+      uniqueLabels.insert(c.label);
+    }
+
+    // Create a color map for each unique label
+    // where each label is assigned a unique color
+    std::unordered_map<uint32_t, std::vector<uint8_t>> colorMap;
+    uint32_t colorIndex = 1;
+    for (const auto& label : uniqueLabels) {
+      // Generate a unique color for each label
+      uint8_t r = (colorIndex * 123) % 256;
+      uint8_t g = (colorIndex * 456) % 256;
+      uint8_t b = (colorIndex * 789) % 256;
+      colorMap[label] = {r, g, b};
+      colorIndex++;
+    }
+
+    // Calculate the width of each row in bytes (including padding to 4-byte boundary)
+    int rowWidth = this->infoHeader.width * 3; // 3 bytes per pixel (RGB)
+
+    // Create a new pixel data array for the colored image
+    // Each pixel now needs 3 bytes (R,G,B) instead of 1
+    std::vector<std::vector<uint8_t>> coloredPixelData(this->pixelData2D.size(),
+      std::vector<uint8_t>(rowWidth, 0)); // RGB image
+
+    // Color each component with its assigned color
+    for (const auto& c : this->components) {
+      // Get the color for the current label
+      auto color = colorMap[c.label];
+      for (const auto& pixel : c.pixels) {
+        int row = pixel.first;
+        int col = pixel.second;
+        // Set the RGB values in the colored pixel data (BGR order for BMP)
+        coloredPixelData[row][col * 3] = color[2];     // Blue
+        coloredPixelData[row][col * 3 + 1] = color[1]; // Green
+        coloredPixelData[row][col * 3 + 2] = color[0]; // Red
+      }
+    }
+
+    // Update the BMP info header for 24-bit color depth
+    this->infoHeader.bit_count = 24;
+    int rowSize = ((this->infoHeader.bit_count * this->infoHeader.width + 31) / 32) * 4;
+    this->infoHeader.size_image = rowSize * std::abs(this->infoHeader.height);
+    this->infoHeader.colors_used = 0; // Not used for 24-bit images
+    this->infoHeader.compression = 0; // No compression
+    this->infoHeader.size = sizeof(BMPInfoHeader);
+
+    // Update the pixel data to the new colored pixel data
+    this->pixelData2D = coloredPixelData;
+
+    // Update the file header offset to point to the new pixel data
+    this->fileHeader.offset_data = sizeof(BMPFileHeader) + sizeof(BMPInfoHeader);
+    // Update the file size
+    this->fileHeader.file_size = this->fileHeader.offset_data + this->infoHeader.size_image;
+
+    // Save the colored image
+    std::string outputFilename = this->name + "_components.bmp";
+    this->write(outputFilename.c_str());
+
+    std::cout << "Saved colored components to " << outputFilename << std::endl;
   }
 
   std::string getName() const { return this->name; }
@@ -455,10 +521,12 @@ private:
     output.write(reinterpret_cast<const char*>(&this->fileHeader), sizeof(this->fileHeader));
     output.write(reinterpret_cast<const char*>(&this->infoHeader), sizeof(this->infoHeader));
 
-
     if (this->infoHeader.bit_count == 32) {
       output.write(reinterpret_cast<const char*>(&this->colorHeader), sizeof(this->colorHeader));
-    } else if (this->infoHeader.bit_count <= 8) {
+    }
+
+    // Write color table for bit depths <= 8
+    if (this->infoHeader.bit_count <= 8) {
       int colorTableEntries = 1 << this->infoHeader.bit_count;
       if (this->infoHeader.colors_used > 0) {
         colorTableEntries = this->infoHeader.colors_used;
@@ -480,54 +548,74 @@ private:
         }
         output.write(reinterpret_cast<const char*>(color), 4);
       }
+    }
 
-      // Generate pixel data
-      std::vector<uint8_t> pixelData(imageSize, 0);
+    // Generate and write pixel data - this section needs to be outside the if/else blocks
+    std::vector<uint8_t> pixelData(imageSize, 0);
 
+    if (this->infoHeader.bit_count == 1) {
       // for 1-bit images, we need to pack bits
-      if (this->infoHeader.bit_count == 1) {
-        for (int r = 0; r < std::abs(this->infoHeader.height); ++r) {
-          for (int c = 0; c < this->infoHeader.width; c += 8) {
-            uint8_t byte = 0;
-            // Pack up to 8 pixels into a byte
-            for (int b = 0; b < 8 && (c + b) < this->infoHeader.width; ++b) {
-              if (this->pixelData2D[r][c + b] != 0) {
-                byte |= (1 << (7 - b)); // Set the bit if pixel is not 0 (MSB first)
+      for (int r = 0; r < std::abs(this->infoHeader.height); ++r) {
+        for (int c = 0; c < this->infoHeader.width; c += 8) {
+          uint8_t byte = 0;
+          // Pack up to 8 pixels into a byte
+          for (int b = 0; b < 8 && (c + b) < this->infoHeader.width; ++b) {
+            if (this->pixelData2D[r][c + b] != 0) {
+              byte |= (1 << (7 - b)); // Set the bit if pixel is not 0 (MSB first)
+            }
+          }
+          // Calculate position in pixelData
+          // Origin is at the bottom left corner
+          // BMP stores pixel data in reverse order (bottom-up)
+          int byteIndex = (std::abs(this->infoHeader.height) - 1 - r) * rowSize + (c / 8);
+          pixelData[byteIndex] = byte;
+        }
+      }
+    } else if (this->infoHeader.bit_count == 24) {
+      // Handle 24-bit RGB images
+      for (int r = 0; r < std::abs(this->infoHeader.height); ++r) {
+        for (int c = 0; c < this->infoHeader.width; ++c) {
+          // Calculate position in pixelData
+          // BMP stores pixel data in reverse order (bottom-up) and as BGR
+          int pixelIndex = (std::abs(this->infoHeader.height) - 1 - r) * rowSize + c * 3;
+
+          if (pixelIndex + 2 < pixelData.size()) {
+            pixelData[pixelIndex] = this->pixelData2D[r][c * 3];         // Blue
+            pixelData[pixelIndex + 1] = this->pixelData2D[r][c * 3 + 1]; // Green
+            pixelData[pixelIndex + 2] = this->pixelData2D[r][c * 3 + 2]; // Red
+          }
+        }
+      }
+    } else {
+      // Basic implementation for other bit depths
+      std::cerr << "Warning: Images with other bit-depths may not be properly supported." << std::endl;
+      for (int r = 0; r < std::abs(this->infoHeader.height); ++r) {
+        for (int c = 0; c < this->infoHeader.width; ++c) {
+          int bytesPerPixel = this->infoHeader.bit_count / 8;
+          int pixelIndex = (std::abs(this->infoHeader.height) - 1 - r) * rowSize + c * bytesPerPixel;
+
+          if (pixelIndex < pixelData.size()) {
+            // Copy each byte of the pixel
+            for (int b = 0; b < bytesPerPixel && b < this->pixelData2D[r].size() / this->infoHeader.width; ++b) {
+              if (c * bytesPerPixel + b < this->pixelData2D[r].size()) {
+                pixelData[pixelIndex + b] = this->pixelData2D[r][c * bytesPerPixel + b];
               }
             }
-            // Calculate position in pixelData
-            // Origin is at the bottom left corner
-            // BMP stores pixel data in reverse order (bottom-up)
-            // For 1-bit images, we need to extract the bits from the byte
-            int byteIndex = (std::abs(this->infoHeader.height) - 1 - r) * rowSize + (c / 8);
-            // int byteIndex = (r * rowSize) + (c / 8);
-            pixelData[byteIndex] = byte;
-          }
-        }
-      } else { // Bit-depth > 1
-        std::cerr << "Warning: Images with > 1 bit-depth are not fully supported yet..." << std::endl;
-        // Basic implementation for other bit depths (might need fixing)
-        for (int r = 0; r < std::abs(this->infoHeader.height); ++r) {
-          for (int c = 0; c < this->infoHeader.width; ++c) {
-            int pixelIndex = (r * rowSize) + (c * (this->infoHeader.bit_count / 8));
-            if (pixelIndex < pixelData.size()) {
-              pixelData[pixelIndex] = this->pixelData2D[r][c];
-            }
           }
         }
       }
-
-      // Write the pixel data
-      output.write(reinterpret_cast<const char*>(pixelData.data()), pixelData.size());
-      if (!output) {
-        throw std::runtime_error("Error writing pixel data to " + std::string(filename));
-      }
-
-      std::cout << "Successfully wrote " << pixelData.size() << " bytes of pixel data" << std::endl;
-
-      // Close the file
-      output.close();
     }
+
+    // Write the pixel data
+    output.write(reinterpret_cast<const char*>(pixelData.data()), pixelData.size());
+    if (!output) {
+      throw std::runtime_error("Error writing pixel data to " + std::string(filename));
+    }
+
+    std::cout << "Successfully wrote " << pixelData.size() << " bytes of pixel data" << std::endl;
+
+    // Close the file
+    output.close();
   }
 };
 
