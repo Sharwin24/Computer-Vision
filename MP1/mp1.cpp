@@ -26,12 +26,12 @@ int main(int argc, const char *argv[]) {
       // Perform connected component labeling
       std::cout << "Processing connected component labeling for " << image << std::endl;
       try {
-      bmp.connectedComponentLabeling();
+        bmp.connectedComponentLabeling();
       } catch (const std::exception& e) {
         std::cerr << "Error during connected component labeling: " << e.what() << std::endl;
       }
       // Apply size filter
-      bmp.applySizeFilter(10);
+      // bmp.applySizeFilter(10);
       // Save the filtered image
       std::string outputFilename = bmp.getName() + "_filtered.bmp";
       bmp.save(outputFilename.c_str());

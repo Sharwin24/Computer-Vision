@@ -91,6 +91,89 @@ public:
   }
 
   void connectedComponentLabeling() {
+    std::cout << "Connected Component Labeling" << std::endl;
+    // Convert the pixel data to a 2D binary image
+    std::vector<std::vector<int>> binaryImage = this->convertToBinaryImage();
+
+    const int numRows = binaryImage.size();
+    const int numCols = binaryImage[0].size();
+    std::cout << "Binary Image Size: " << numRows << " x " << numCols << std::endl;
+    // First pass: Assign labels and record equivalences
+    int label = 1;
+    std::vector<std::vector<int>> labeledImage(numRows, std::vector<int>(numCols, 0));
+    std::vector<int> parent(numRows * numCols);
+    for (int r = 0; r < numRows; ++r) {
+      for (int c = 0; c < numCols; ++c) {
+        // Skip Background pixels
+        if (binaryImage[r][c] == 0) { continue; }
+
+        // Check neighbors
+        int left = (c > 0) ? labeledImage[r][c - 1] : 0;
+        int up = (r > 0) ? labeledImage[r - 1][c] : 0;
+
+        if (up == 0 && left == 0) {
+          // L(r, c) is a new label
+          labeledImage[r][c] = label;
+          parent[label] = label; // Initialize parent
+          label++;
+        } else if (up != 0 && left == 0) {
+          // L(r, c) is the same as L(r-1, c)
+          labeledImage[r][c] = up;
+        } else if (up == 0 && left != 0) {
+          // L(r, c) is the same as L(r, c-1)
+          labeledImage[r][c] = left;
+        } else { // Both neighbors are non-zero (both are 1)
+          labeledImage[r][c] = std::min(up, left);
+          // Save equivalence
+          this->saveEquivalence(parent, up, left);
+        }
+      }
+    }
+
+    std::cout << "Labeling completed. Number of labels: " << label - 1 << std::endl;
+
+    // Second pass: Resolve equivalences
+    for (int r = 0; r < numRows; ++r) {
+      for (int c = 0; c < numCols; ++c) {
+        if (labeledImage[r][c] != 0) {
+          labeledImage[r][c] = this->findRoot(parent, labeledImage[r][c]);
+        }
+      }
+    }
+
+    std::set<int> uniqueLabels;
+    for (int r = 0; r < numRows; ++r) {
+      for (int c = 0; c < numCols; ++c) {
+        if (labeledImage[r][c] != 0) {
+          uniqueLabels.insert(labeledImage[r][c]);
+        }
+      }
+    }
+    std::cout << "Unique labels found: " << uniqueLabels.size() << std::endl;
+    
+    // Create components
+    this->components.clear();
+    std::unordered_map<int, int> labelToComponentIndex;
+    int componentIndex = 0;
+    for (int label : uniqueLabels) {
+      labelToComponentIndex[label] = componentIndex++;
+      this->components.push_back({label, 0, {}});
+    }
+    // Populate components
+    for (int r = 0; r < numRows; ++r) {
+      for (int c = 0; c < numCols; ++c) {
+        if (labeledImage[r][c] != 0) {
+          int lab = labeledImage[r][c];
+          int compIndex = labelToComponentIndex[lab];
+          this->components[compIndex].pixels.push_back(r * numCols + c);
+          this->components[compIndex].area++;
+        }
+      }
+    }
+    std::cout << "Found " << this->components.size() << " components" << std::endl;
+  }
+
+  void CCL() {
     const int W = this->infoHeader.width;
     const int H = std::abs(this->infoHeader.height);
 
@@ -187,7 +270,7 @@ public:
       }
     }
 
-    std::cout << "Found " << this->components.size() << " connected components" << std::endl;
+    std::cout << "Found " << this->components.size() << " components" << std::endl;
   }
 
   void applySizeFilter(const int sizeThreshold = 10) {
@@ -254,9 +337,7 @@ public:
     std::cout << "Filtered pixel data size: " << this->pixelData.size() << std::endl;
   }
 
-  std::string getName() const {
-    return this->name;
-  }
+  std::string getName() const { return this->name; }
 
 private:
   BMPFileHeader fileHeader;
@@ -265,6 +346,39 @@ private:
   std::vector<uint8_t> pixelData; // Pixel data
   std::string name;
   std::vector<Component> components;
+
+  int findRoot(const std::vector<int>& parent, int label) {
+    while (parent[label] != label) {
+      label = parent[label];
+    }
+    return label;
+  }
+
+  void saveEquivalence(std::vector<int>& parent, int label1, int label2) {
+    int root1 = label1;
+    while (parent[root1] != root1) {
+      root1 = parent[root1];
+    }
+    int root2 = label2;
+    while (parent[root2] != root2) {
+      root2 = parent[root2];
+    }
+    parent.at(std::max(root1, root2)) = std::min(root1, root2);
+  }
+
+  std::vector<std::vector<int>> convertToBinaryImage() {
+    std::vector<std::vector<int>> binaryImage;
+    const int numRows = std::abs(this->infoHeader.height);
+    const int numCols = this->infoHeader.width;
+    binaryImage.resize(numRows, std::vector<int>(numCols, 0));
+    for (int i = 0; i < numRows; ++i) {
+      for (int j = 0; j < numCols; ++j) {
+        int index = i * numCols + j;
+        binaryImage[i][j] = this->pixelData[index] == 0 ? 0 : 1;
+      }
+    }
+    return binaryImage;
+  }
 
   std::string getImageName(const char* filename) {
     // Extract the image name from the filename
