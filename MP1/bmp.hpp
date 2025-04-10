@@ -229,10 +229,7 @@ public:
     std::cout << "Number of components after size filter: " << this->components.size() - filteredComponents.size() << std::endl;
 
     // Check if we have any components that passed the filter
-    if (filteredComponents.empty()) {
-      std::cerr << "Warning: No components passed the size filter. Components stay the same." << std::endl;
-      return;
-    }
+    if (filteredComponents.empty()) { return; }
 
     // Set pixels part of filtered components to background (0)
     int pixelsSet = 0;
