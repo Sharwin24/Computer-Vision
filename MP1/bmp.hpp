@@ -413,9 +413,9 @@ private:
         // BMP stores pixel data in reverse order (bottom-up)
         // For 1-bit images, we need to extract the bits from the byte
         if (this->infoHeader.bit_count == 1) {
-          this->pixelData2D[r][c] = ((pixelData[r * rowSize + c / 8] >> (7 - (c % 8))) & 0x01);
+          this->pixelData2D[std::abs(this->infoHeader.height) - 1 - r][c] = ((pixelData[r * rowSize + c / 8] >> (7 - (c % 8))) & 0x01);
         } else {
-          this->pixelData2D[r][c] = pixelData[r * rowSize + c];
+          this->pixelData2D[std::abs(this->infoHeader.height) - 1 - r][c] = pixelData[r * rowSize + c];
         }
       }
     }
