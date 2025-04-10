@@ -5,42 +5,38 @@
 #include "bmp.hpp"
 
 int main(int argc, const char *argv[]) {
+  std::cout << "BMP Image Processing" << std::endl;
   std::vector<std::string> images;
-  if (argc > 2) {
-    images.reserve(argc - 1);
-    for (int i = 1; i < argc; ++i) {
-      images.emplace_back(argv[i]);
-    }
-  }
+  images.push_back("test.bmp");
+  // images.push_back("face.bmp");
+  // images.push_back("face_old.bmp");
+  // images.push_back("gun.bmp");
 
-  if (images.empty()) {
-    std::cerr << "Usage: " << argv[0] << " <image1.bmp> <image2.bmp> ...\n";
-    std::cerr << "No images provided. Using hardcoded test images.\n";
-    // Use hardcoded test images if no arguments are provided
-    images = {
-      "test.bmp",
-      "face.bmp",
-      "gun.bmp",
-      "face_old.bmp"
-    };
+  std::cout << "Processing images" << std::endl;
+  for (const auto& image : images) {
+    std::cout << " - " << image << std::endl;
   }
+  std::cout << std::endl;
 
-  std::vector<BMPImage> bmpImages;
   for (const auto& image : images) {
     try {
       BMPImage bmp(image.c_str());
       bmp.printInfo();
       // bmp.printPixelData();
-      bmpImages.push_back(bmp);
       // Perform connected component labeling
+      std::cout << "Processing connected component labeling for " << image << std::endl;
+      try {
       bmp.connectedComponentLabeling();
+      } catch (const std::exception& e) {
+        std::cerr << "Error during connected component labeling: " << e.what() << std::endl;
+      }
       // Apply size filter
       bmp.applySizeFilter(10);
       // Save the filtered image
       std::string outputFilename = bmp.getName() + "_filtered.bmp";
       bmp.save(outputFilename.c_str());
     } catch (const std::exception& e) {
-      std::cerr << "Error processing " << image << ": " << e.what() << "\n";
+      std::cerr << "Error processing " << image << ": " << e.what() << std::endl;
     }
   }
 
