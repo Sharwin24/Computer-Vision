@@ -22,15 +22,15 @@ int main(int argc, const char* argv[]) {
     try {
       BMPImage bmp(image.c_str());
       bmp.printInfo();
-      // bmp.printPixelData();
+      bmp.printPixelData();
       // Perform connected component labeling
       std::cout << "Processing connected component labeling for " << image << std::endl;
-      try {
-        bmp.connectedComponentLabeling();
-      }
-      catch (const std::exception& e) {
-        std::cerr << "Error during connected component labeling: " << e.what() << std::endl;
-      }
+      // try {
+      //   bmp.connectedComponentLabeling();
+      // }
+      // catch (const std::exception& e) {
+      //   std::cerr << "Error during connected component labeling: " << e.what() << std::endl;
+      // }
       // Apply size filter
       // bmp.applySizeFilter(10);
       // Save the filtered image

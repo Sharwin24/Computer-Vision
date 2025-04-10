@@ -86,6 +86,7 @@ public:
     std::cout << "Width: " << this->infoHeader.width << " pixels" << std::endl;
     std::cout << "Height: " << this->infoHeader.height << " pixels" << std::endl;
     std::cout << "NumPixels: " << this->pixelData2D.size() * this->pixelData2D[0].size() << std::endl;
+    std::cout << "ImageSize: " << this->infoHeader.size_image << " bytes" << std::endl;
     std::cout << "Bit Count: " << this->infoHeader.bit_count << std::endl;
     std::cout << "Compression: " << this->infoHeader.compression << std::endl;
     std::cout << "Colors Used: " << this->infoHeader.colors_used << std::endl;
@@ -100,6 +101,21 @@ public:
       std::cout << std::endl;
     }
     std::cout << std::endl;
+
+    // Print to log_cpp.txt
+    std::ofstream logFile("log_cpp.txt");
+    if (logFile.is_open()) {
+      logFile << "Pixel Data (2D):\n";
+      for (const auto& row : this->pixelData2D) {
+        for (const auto& pixel : row) {
+          logFile << static_cast<int>(pixel) << " ";
+        }
+        logFile << std::endl;
+      }
+      logFile.close();
+    } else {
+      std::cerr << "Unable to open log file" << std::endl;
+    }
   }
 
   void connectedComponentLabeling() {
@@ -340,6 +356,7 @@ private:
     if (!file) {
       throw std::runtime_error("Could not open file" + std::string(filename));
     }
+
     // Read File Header
     file.read(reinterpret_cast<char*>(&this->fileHeader), sizeof(this->fileHeader));
     if (this->fileHeader.file_type != BMFILETYPE) {
@@ -357,23 +374,49 @@ private:
     // If 32 bits per pixel, read the color header as well
     if (this->infoHeader.bit_count == 32) {
       file.read(reinterpret_cast<char*>(&this->colorHeader), sizeof(this->colorHeader));
+    } else if (this->infoHeader.bit_count <= 8) {
+      int colorTableEntries = 1 << this->infoHeader.bit_count;
+      if (this->infoHeader.colors_used > 0) {
+        colorTableEntries = this->infoHeader.colors_used;
+      }
+
+      // Skip color table
+      file.seekg(colorTableEntries * sizeof(uint32_t), std::ios::cur);
     }
 
     // Move file pointer to beginning of pixel data
     file.seekg(this->fileHeader.offset_data, std::ios::beg);
 
+    int rowSize = ((this->infoHeader.bit_count * this->infoHeader.width + 31) / 32) * 4;
+    // For safety, use absolute heigh since BMP height can be negative
+    int imageSize = rowSize * std::abs(this->infoHeader.height);
+
     // Determine image size
     if (this->infoHeader.size_image == 0) {
-      // For safety, use absolute heigh since BMP height can be negative
-      this->infoHeader.size_image = this->infoHeader.width * std::abs(this->infoHeader.height) * (this->infoHeader.bit_count / 8);
+      this->infoHeader.size_image = imageSize;
     }
 
     // Read the pixel data
+    std::vector<uint8_t> pixelData(this->infoHeader.size_image);
+    file.read(reinterpret_cast<char*>(pixelData.data()), this->infoHeader.size_image);
+    if (!file) {
+      throw std::runtime_error("Error reading pixel data from " + std::string(filename));
+    }
+    std::cout << "Successfully read " << imageSize << " bytes of pixel data" << std::endl;
+    std::cout << "Pixel data size: " << pixelData.size() << " bytes" << std::endl;
+
+    // Convert pixel data to 2D array matching image dimensions
     this->pixelData2D.resize(std::abs(this->infoHeader.height), std::vector<uint8_t>(this->infoHeader.width, 0));
-    for (int i = 0; i < std::abs(this->infoHeader.height); ++i) {
-      file.read(reinterpret_cast<char*>(this->pixelData2D[i].data()), this->infoHeader.width);
-      if (!file) {
-        throw std::runtime_error("Error reading pixel data row from " + std::string(filename));
+    for (int r = 0; r < std::abs(this->infoHeader.height); ++r) {
+      for (int c = 0; c < this->infoHeader.width; ++c) {
+        // Origin is at the bottom left corner
+        // BMP stores pixel data in reverse order (bottom-up)
+        // For 1-bit images, we need to extract the bits from the byte
+        if (this->infoHeader.bit_count == 1) {
+          this->pixelData2D[r][c] = ((pixelData[r * rowSize + c / 8] >> (7 - (c % 8))) & 0x01);
+        } else {
+          this->pixelData2D[r][c] = pixelData[r * rowSize + c];
+        }
       }
     }
 
@@ -393,30 +436,101 @@ private:
     if (this->infoHeader.bit_count == 32) {
       // Only include color header if pixel depth is 32 bits
       this->fileHeader.offset_data += sizeof(BMPColorHeader);
+    } else if (this->infoHeader.bit_count <= 8) {
+      int colorTableEntries = 1 << this->infoHeader.bit_count;
+      if (this->infoHeader.colors_used > 0) {
+        colorTableEntries = this->infoHeader.colors_used;
+      }
+      this->fileHeader.offset_data += colorTableEntries * sizeof(uint32_t);
     }
 
+    // Calculate row size with padding to 4-byte boundary
+    int rowSize = ((this->infoHeader.bit_count * this->infoHeader.width + 31) / 32) * 4;
+
+    // Calculate image size
+    int imageSize = rowSize * std::abs(this->infoHeader.height);
+    this->infoHeader.size_image = imageSize;
+
     // Update file size
-    std::vector<uint8_t> pixelData;
-    for (const auto& row : this->pixelData2D) {
-      pixelData.insert(pixelData.end(), row.begin(), row.end());
-    }
-    this->fileHeader.file_size = this->fileHeader.offset_data + static_cast<uint32_t>(pixelData.size());
+    this->fileHeader.file_size = this->fileHeader.offset_data + imageSize;
 
     // Write the headers
     output.write(reinterpret_cast<const char*>(&this->fileHeader), sizeof(this->fileHeader));
     output.write(reinterpret_cast<const char*>(&this->infoHeader), sizeof(this->infoHeader));
+
+
     if (this->infoHeader.bit_count == 32) {
       output.write(reinterpret_cast<const char*>(&this->colorHeader), sizeof(this->colorHeader));
-    }
+    } else if (this->infoHeader.bit_count <= 8) {
+      int colorTableEntries = 1 << this->infoHeader.bit_count;
+      if (this->infoHeader.colors_used > 0) {
+        colorTableEntries = this->infoHeader.colors_used;
+      }
+      // Write color table
+      // For 1-bit image, typically we need two entries: 0 (black) and 1 (white)
+      for (int i = 0; i < colorTableEntries; i++) {
+        uint8_t color[4];
+        if (i == 0) { // Black
+          color[0] = 0;    // Blue
+          color[1] = 0;    // Green
+          color[2] = 0;    // Red
+          color[3] = 0;    // Reserved
+        } else { // White
+          color[0] = 255;  // Blue
+          color[1] = 255;  // Green
+          color[2] = 255;  // Red
+          color[3] = 0;    // Reserved
+        }
+        output.write(reinterpret_cast<const char*>(color), 4);
+      }
 
-    // Write the pixel data
-    output.write(reinterpret_cast<const char*>(pixelData.data()), pixelData.size());
-    if (!output) {
-      throw std::runtime_error("Error writing pixel data to " + std::string(filename));
-    }
+      // Generate pixel data
+      std::vector<uint8_t> pixelData(imageSize, 0);
 
-    // Close the file
-    output.close();
+      // for 1-bit images, we need to pack bits
+      if (this->infoHeader.bit_count == 1) {
+        for (int r = 0; r < std::abs(this->infoHeader.height); ++r) {
+          for (int c = 0; c < this->infoHeader.width; c += 8) {
+            uint8_t byte = 0;
+            // Pack up to 8 pixels into a byte
+            for (int b = 0; b < 8 && (c + b) < this->infoHeader.width; ++b) {
+              if (this->pixelData2D[r][c + b] != 0) {
+                byte |= (1 << (7 - b)); // Set the bit if pixel is not 0 (MSB first)
+              }
+            }
+            // Calculate position in pixelData
+            // Origin is at the bottom left corner
+            // BMP stores pixel data in reverse order (bottom-up)
+            // For 1-bit images, we need to extract the bits from the byte
+            int byteIndex = (std::abs(this->infoHeader.height) - 1 - r) * rowSize + (c / 8);
+            // int byteIndex = (r * rowSize) + (c / 8);
+            pixelData[byteIndex] = byte;
+          }
+        }
+      } else { // Bit-depth > 1
+        std::cerr << "Warning: Images with > 1 bit-depth are not fully supported yet..." << std::endl;
+        // Basic implementation for other bit depths (might need fixing)
+        for (int r = 0; r < std::abs(this->infoHeader.height); ++r) {
+          for (int c = 0; c < this->infoHeader.width; ++c) {
+            int pixelIndex = (r * rowSize) + (c * (this->infoHeader.bit_count / 8));
+            if (pixelIndex < pixelData.size()) {
+              pixelData[pixelIndex] = this->pixelData2D[r][c];
+            }
+          }
+        }
+      }
+
+      // Write the pixel data
+      output.write(reinterpret_cast<const char*>(pixelData.data()), pixelData.size());
+      if (!output) {
+        throw std::runtime_error("Error writing pixel data to " + std::string(filename));
+      }
+
+      std::cout << "Successfully wrote " << pixelData.size() << " bytes of pixel data" << std::endl;
+
+      // Close the file
+      output.close();
+    }
   }
 };
 
