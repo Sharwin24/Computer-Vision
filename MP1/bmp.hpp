@@ -17,6 +17,7 @@
 #include <vector>
 #include <set>
 #include <unordered_map>
+#include <algorithm> // For std::remove_if
 
 #pragma pack(push, 1) // Ensure no padding is added to the structures
 
@@ -60,9 +61,9 @@ struct BMPColorHeader {
 // --------------- END_CITATION [1] ---------------- //
 
 struct Component {
-  int label; // Label of the component
-  int area; // Number of pixels in the component
-  std::vector<int> pixels; // List of pixel indices in the component
+  uint32_t label; // Unique Label of the component
+  uint32_t area; // Number of pixels in the component
+  std::vector<std::pair<uint8_t, uint8_t>> pixels; // List of pixel locations [row, col]
 };
 
 class BMPImage {
@@ -84,18 +85,19 @@ public:
     std::cout << "File Size: " << this->fileHeader.file_size << " bytes" << std::endl;
     std::cout << "Width: " << this->infoHeader.width << " pixels" << std::endl;
     std::cout << "Height: " << this->infoHeader.height << " pixels" << std::endl;
+    std::cout << "NumPixels: " << this->pixelData2D.size() * this->pixelData2D[0].size() << std::endl;
     std::cout << "Bit Count: " << this->infoHeader.bit_count << std::endl;
     std::cout << "Compression: " << this->infoHeader.compression << std::endl;
     std::cout << "Colors Used: " << this->infoHeader.colors_used << std::endl;
   }
 
   void printPixelData() const {
-    std::cout << "Pixel Data:\n";
-    for (size_t i = 0; i < this->pixelData.size(); ++i) {
-      std::cout << static_cast<int>(this->pixelData[i]) << " ";
-      if ((i + 1) % this->infoHeader.width == 0) {
-        std::cout << std::endl;
+    std::cout << "Pixel Data (2D):\n";
+    for (const auto& row : this->pixelData2D) {
+      for (const auto& pixel : row) {
+        std::cout << static_cast<int>(pixel) << " ";
       }
+      std::cout << std::endl;
     }
     std::cout << std::endl;
   }
@@ -109,9 +111,12 @@ public:
     const int numCols = binaryImage[0].size();
     std::cout << "Binary Image Size: " << numRows << " x " << numCols << std::endl;
     // First pass: Assign labels and record equivalences
-    int label = 1;
-    std::vector<std::vector<int>> labeledImage(numRows, std::vector<int>(numCols, 0));
-    std::vector<int> parent(numRows * numCols);
+    uint32_t label = 1;
+    std::vector<std::vector<int>> labeledImage(numRows, std::vector<int>(numCols, 1));
+    std::vector<int> parent(numRows * numCols + 1, 0);
+    for (int i = 0; i < parent.size(); ++i) {
+      parent[i] = i; // Initialize parent to itself
+    }
     for (int r = 0; r < numRows; ++r) {
       for (int c = 0; c < numCols; ++c) {
         // Skip Background pixels
@@ -121,21 +126,20 @@ public:
         int left = (c > 0) ? labeledImage[r][c - 1] : 0;
         int up = (r > 0) ? labeledImage[r - 1][c] : 0;
 
-        if (up == 0 && left == 0) {
-          // L(r, c) is a new label
-          labeledImage[r][c] = label;
-          parent[label] = label; // Initialize parent
-          label++;
-        } else if (up != 0 && left == 0) {
-          // L(r, c) is the same as L(r-1, c)
+        if (up == left && up != 0 && left != 0) { // Same non-zero label
+          // L(r,c) = up
           labeledImage[r][c] = up;
-        } else if (up == 0 && left != 0) {
-          // L(r, c) is the same as L(r, c-1)
-          labeledImage[r][c] = left;
-        } else { // Both neighbors are non-zero (both are 1)
+        } else if (up != left && !(up && left)) { // Either is zero
+          // L(r,c) = max(up, left)
+          labeledImage[r][c] = std::max(up, left);
+        } else if (up != left && up != 0 && left != 0) { // Both are non-zero
+          // L(r,c) = min(up, left)
           labeledImage[r][c] = std::min(up, left);
-          // Save equivalence
-          this->saveEquivalence(parent, up, left);
+          // E_table(up, left)
+          this->unionLabels(parent, up, left);
+        } else { // Both are zero
+          // L(r,c) = L + 1
+          labeledImage[r][c] = label++;
         }
       }
     }
@@ -167,120 +171,24 @@ public:
     int componentIndex = 0;
     for (int label : uniqueLabels) {
       labelToComponentIndex[label] = componentIndex++;
-      this->components.push_back({label, 0, {}});
+      this->components.push_back({static_cast<uint32_t>(label), 0, {}});
     }
+
     // Populate components
     for (int r = 0; r < numRows; ++r) {
       for (int c = 0; c < numCols; ++c) {
         if (labeledImage[r][c] != 0) {
           int lab = labeledImage[r][c];
           int compIndex = labelToComponentIndex[lab];
-          this->components[compIndex].pixels.push_back(r * numCols + c);
+          this->components[compIndex].pixels.emplace_back(r, c);
           this->components[compIndex].area++;
         }
       }
     }
     std::cout << "Found " << this->components.size() << " components" << std::endl;
-  }
-
-  void CCL() {
-    const int W = this->infoHeader.width;
-    const int H = std::abs(this->infoHeader.height);
-
-    // Initialize parent vector where each element is its own parent
-    std::vector<int> parent(W * H + 1);
-    for (int i = 0; i <= W * H; i++) {
-      parent[i] = i;
+    for (const auto& c : this->components) {
+      std::cout << "Component " << c.label << ": Area = " << c.area << std::endl;
     }
-
-    std::vector<int> labels(W * H, 0);
-
-    // Helper function to find the root label
-    auto findLabel = [&parent](int label) {
-      while (parent[label] != label) {
-        // Path compression - make every node point to its grandparent
-        parent[label] = parent[parent[label]];
-        label = parent[label];
-      }
-      return label;
-    };
-
-    // Helper function to union two labels
-    auto unionLabels = [&parent, &findLabel](int a, int b) {
-      int rootA = findLabel(a);
-      int rootB = findLabel(b);
-      if (rootA != rootB) {
-        parent[rootB] = rootA;
-      }
-    };
-
-    int labelCount = 1;
-
-    // First Pass: Assign labels and record equivalences
-    for (int y = 0; y < H; ++y) {
-      for (int x = 0; x < W; ++x) {
-        int index = y * W + x;
-
-        // Only process foreground pixels (non-zero)
-        if (this->pixelData[index] == 0) {
-          continue;
-        }
-
-        // Check neighbors (safely)
-        int left = (x > 0) ? labels.at(y * W + (x - 1)) : 0;
-        int top = (y > 0) ? labels.at((y - 1) * W + x) : 0;
-
-        if (left == 0 && top == 0) {
-          // New component
-          labels[index] = labelCount++;
-        } else if (left != 0 && top == 0) {
-          // Only left neighbor
-          labels[index] = left;
-        } else if (left == 0 && top != 0) {
-          // Only top neighbor
-          labels[index] = top;
-        } else {
-          // Both neighbors
-          labels[index] = std::min(left, top);
-          unionLabels(left, top);
-        }
-      }
-    }
-
-    // Second Pass: Resolve equivalences
-    for (int i = 0; i < W * H; ++i) {
-      if (labels[i] != 0) {
-        labels[i] = findLabel(labels[i]);
-      }
-    }
-
-    std::set<int> uniqueLabels(labels.begin(), labels.end());
-    uniqueLabels.erase(0); // Remove background label
-
-    // Create components
-    int numComponents = uniqueLabels.size();
-    std::cout << "Number of connected components: " << numComponents << std::endl;
-
-    this->components.clear();
-    std::unordered_map<int, int> labelToComponentIndex;
-    int componentIndex = 0;
-
-    for (int label : uniqueLabels) {
-      labelToComponentIndex[label] = componentIndex++;
-      this->components.push_back({label, 0, {}});
-    }
-
-    // Populate components
-    for (int i = 0; i < W * H; ++i) {
-      if (labels[i] != 0) {
-        int lab = labels[i];
-        int compIndex = labelToComponentIndex[lab];
-        this->components[compIndex].pixels.push_back(i);
-        this->components[compIndex].area++;
-      }
-    }
-
-    std::cout << "Found " << this->components.size() << " components" << std::endl;
   }
 
   void applySizeFilter(const int sizeThreshold = 10) {
@@ -290,32 +198,27 @@ public:
       return;
     }
 
-    std::vector<Component> filteredComponents;
-    filteredComponents.reserve(this->components.size());
-
     std::cout << "Applying size filter with threshold: " << sizeThreshold << std::endl;
     std::cout << "Number of components before size filter: " << this->components.size() << std::endl;
 
-    // Filter components by area
+    // Track the components we need to filter out and remove
+    std::vector<Component> filteredComponents;
+    // Filter components by area, save components that are smaller than the threshold
     for (const auto& c : this->components) {
-      if (c.area >= sizeThreshold) {
+      if (c.area < sizeThreshold) {
         filteredComponents.push_back(c);
       }
     }
 
-    std::cout << "Number of components after size filter: " << filteredComponents.size() << std::endl;
-
-    // Create filtered image (initialize all to background/0)
-    std::vector<uint8_t> filteredPixelData(this->pixelData.size(), 0);
+    std::cout << "Number of components after size filter: " << this->components.size() - filteredComponents.size() << std::endl;
 
     // Check if we have any components that passed the filter
     if (filteredComponents.empty()) {
-      std::cout << "Warning: No components passed the size filter." << std::endl;
-      this->components = filteredComponents;  // Update to empty component list
-      return;  // Keep all pixels as background (0)
+      std::cerr << "Warning: No components passed the size filter. Components stay the same." << std::endl;
+      return;
     }
 
-    // Set foreground pixels (255) for components that passed the filter
+    // Set pixels part of filtered components to background (0)
     int pixelsSet = 0;
     for (const auto& c : filteredComponents) {
       // Add safety check for empty pixels
@@ -324,27 +227,41 @@ public:
         continue;
       }
 
-      // Set pixels
-      for (const auto& pixelIndex : c.pixels) {
-        // Bounds check
-        if (pixelIndex < 0 || pixelIndex >= filteredPixelData.size()) {
-          std::cerr << "Error: Pixel index " << pixelIndex << " out of bounds (0-"
-            << filteredPixelData.size() - 1 << ")" << std::endl;
-          continue;
-        }
-
-        filteredPixelData[pixelIndex] = 255;  // Set to foreground
+      // Set pixels that are filtered out to background (0)
+      for (const auto& pixel : c.pixels) {
+        this->pixelData2D[pixel.first][pixel.second] = 0; // Set to background
         pixelsSet++;
       }
     }
 
-    std::cout << "Set " << pixelsSet << " pixels to foreground in filtered image" << std::endl;
+    std::cout << "Set " << pixelsSet << " pixels to background in filtered image" << std::endl;
 
-    // Update pixel data and components
-    this->pixelData = filteredPixelData;
-    this->components = filteredComponents;
+    // Remove filtered components from the original components
+    for (const auto& c : filteredComponents) {
+      auto it = std::remove_if(this->components.begin(), this->components.end(),
+        [&c](const Component& comp) { return comp.label == c.label; });
+      this->components.erase(it, this->components.end());
+    }
 
-    std::cout << "Filtered pixel data size: " << this->pixelData.size() << std::endl;
+    // Sort the components by label
+    std::sort(this->components.begin(), this->components.end(),
+      [](const Component& a, const Component& b) {
+      return a.label < b.label;
+    });
+
+    // Update the labels of the remaining components to be contiguous
+    uint32_t newLabel = 1;
+    for (auto& c : this->components) {
+      c.label = newLabel++;
+    }
+
+    std::cout << "Filtered out " << filteredComponents.size() << " components" << std::endl;
+    std::cout << "Filtered pixel data size: " << this->pixelData2D.size() << std::endl;
+  }
+
+  void showComponentImages() {
+    // For the components that we found, create one image
+    // where each component is in a different color or grayscale intensity
   }
 
   std::string getName() const { return this->name; }
@@ -353,27 +270,31 @@ private:
   BMPFileHeader fileHeader;
   BMPInfoHeader infoHeader;
   BMPColorHeader colorHeader;
-  std::vector<uint8_t> pixelData; // Pixel data
+  std::vector<std::vector<uint8_t>> pixelData2D; // 2D representation of pixel data
   std::string name;
   std::vector<Component> components;
 
-  int findRoot(const std::vector<int>& parent, int label) {
-    while (parent[label] != label) {
-      label = parent[label];
+  int findRoot(std::vector<int>& parent, int label) {
+    // Path compression: make every examined node point directly to the root
+    if (parent[label] != label) {
+      parent[label] = findRoot(parent, parent[label]);
     }
-    return label;
+    return parent[label];
   }
 
-  void saveEquivalence(std::vector<int>& parent, int label1, int label2) {
-    int root1 = label1;
-    while (parent[root1] != root1) {
-      root1 = parent[root1];
+  void unionLabels(std::vector<int>& parent, int label1, int label2) {
+    int root1 = findRoot(parent, label1);
+    int root2 = findRoot(parent, label2);
+
+    if (root1 != root2) {
+      // Make the smaller label the parent of the larger one
+      // This helps maintain a flatter tree structure
+      if (root1 < root2) {
+        parent[root2] = root1;
+      } else {
+        parent[root1] = root2;
+      }
     }
-    int root2 = label2;
-    while (parent[root2] != root2) {
-      root2 = parent[root2];
-    }
-    parent.at(std::max(root1, root2)) = std::min(root1, root2);
   }
 
   std::vector<std::vector<int>> convertToBinaryImage() {
@@ -381,12 +302,20 @@ private:
     const int numRows = std::abs(this->infoHeader.height);
     const int numCols = this->infoHeader.width;
     binaryImage.resize(numRows, std::vector<int>(numCols, 0));
-    for (int i = 0; i < numRows; ++i) {
-      for (int j = 0; j < numCols; ++j) {
-        int index = i * numCols + j;
-        binaryImage[i][j] = this->pixelData[index] == 0 ? 0 : 1;
+    for (int r = 0; r < numRows; ++r) {
+      for (int c = 0; c < numCols; ++c) {
+        binaryImage[r][c] = this->pixelData2D[r][c] == 0 ? 0 : 1;
       }
     }
+    // // Print binary image for debugging
+    // std::cout << "Binary Image:" << std::endl;
+    // for (const auto& row : binaryImage) {
+    //   for (const auto& pixel : row) {
+    //     std::cout << pixel << " ";
+    //   }
+    //   std::cout << std::endl;
+    // }
+    // std::cout << std::endl;
     return binaryImage;
   }
 
@@ -444,6 +373,20 @@ private:
     file.read(reinterpret_cast<char*>(this->pixelData.data()), this->infoHeader.size_image);
     if (!file) {
       throw std::runtime_error("Error reading pixel data from " + std::string(filename));
+    }
+
+    // Check if the pixel data was read correctly
+    if (this->pixelData.size() != this->infoHeader.size_image) {
+      throw std::runtime_error("Error: Pixel data size mismatch in " + std::string(filename));
+    }
+
+    // Populate 2D pixel data representation that matches the image dimensions
+    this->pixelData2D.resize(std::abs(this->infoHeader.height), std::vector<int>(this->infoHeader.width, 0));
+    for (int i = 0; i < std::abs(this->infoHeader.height); ++i) {
+      for (int j = 0; j < this->infoHeader.width; ++j) {
+        int index = i * this->infoHeader.width + j;
+        this->pixelData2D[i][j] = this->pixelData[index];
+      }
     }
 
     // Close the file

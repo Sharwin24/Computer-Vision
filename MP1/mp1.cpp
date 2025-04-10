@@ -4,7 +4,7 @@
 
 #include "bmp.hpp"
 
-int main(int argc, const char *argv[]) {
+int main(int argc, const char* argv[]) {
   std::cout << "BMP Image Processing" << std::endl;
   std::vector<std::string> images;
   images.push_back("test.bmp");
@@ -27,7 +27,8 @@ int main(int argc, const char *argv[]) {
       std::cout << "Processing connected component labeling for " << image << std::endl;
       try {
         bmp.connectedComponentLabeling();
-      } catch (const std::exception& e) {
+      }
+      catch (const std::exception& e) {
         std::cerr << "Error during connected component labeling: " << e.what() << std::endl;
       }
       // Apply size filter
@@ -35,7 +36,8 @@ int main(int argc, const char *argv[]) {
       // Save the filtered image
       std::string outputFilename = bmp.getName() + "_filtered.bmp";
       bmp.save(outputFilename.c_str());
-    } catch (const std::exception& e) {
+    }
+    catch (const std::exception& e) {
       std::cerr << "Error processing " << image << ": " << e.what() << std::endl;
     }
   }
