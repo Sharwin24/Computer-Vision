@@ -1,3 +1,14 @@
+/**
+ * @file bmp.hpp
+ * @author Sharwin Patil (sharwinpatil@u.northwestern.edu)
+ * @brief Support for BMP image processing
+ * @version 0.1
+ * @date 2025-04-10
+ *
+ * @copyright Copyright (c) 2025
+ *
+ */
+
 #ifndef BMP_HPP
 #define BMP_HPP
 #include <cstdint>
@@ -11,9 +22,10 @@
 
 #define BMFILETYPE 0x4D42 // 'BM' in ASCII
 
-// --------------- BEGIN_CITATION [1] ---------------- //
+ // --------------- BEGIN_CITATION [1] ---------------- //
+ // https://solarianprogrammer.com/2018/11/19/cpp-reading-writing-bmp-images/
 struct BMPFileHeader {
-  uint16_t file_type{BMFILETYPE};          // File type always BM which is 0x4D42
+  uint16_t file_type{BMFILETYPE};      // File type always BM which is 0x4D42
   uint32_t file_size{0};               // Size of the file (in bytes)
   uint16_t reserved1{0};               // Reserved, always 0
   uint16_t reserved2{0};               // Reserved, always 0
@@ -23,9 +35,9 @@ struct BMPFileHeader {
 struct BMPInfoHeader {
   uint32_t size{0};                      // Size of this header (in bytes)
   int32_t width{0};                      // width of bitmap in pixels
-  int32_t height{0};                     // width of bitmap in pixels
-                                          //       (if positive, bottom-up, with origin in lower left corner)
-                                          //       (if negative, top-down, with origin in upper left corner)
+  int32_t height{0};                     // height of bitmap in pixels
+  //       (if positive, bottom-up, with origin in lower left corner)
+  //       (if negative, top-down, with origin in upper left corner)
   uint16_t planes{1};                    // No. of planes for the target device, this is always 1
   uint16_t bit_count{0};                 // No. of bits per pixel
   uint32_t compression{0};               // 0 or 3 - uncompressed. THIS PROGRAM CONSIDERS ONLY UNCOMPRESSED BMP images
@@ -45,12 +57,10 @@ struct BMPColorHeader {
   uint32_t unused[16]{0};                // Unused data for sRGB color space
 };
 #pragma pack(pop) // Restore the previous packing alignment
-
-
 // --------------- END_CITATION [1] ---------------- //
 
 struct Component {
-  int label;
+  int label; // Label of the component
   int area; // Number of pixels in the component
   std::vector<int> pixels; // List of pixel indices in the component
 };
@@ -150,7 +160,7 @@ public:
       }
     }
     std::cout << "Unique labels found: " << uniqueLabels.size() << std::endl;
-    
+
     // Create components
     this->components.clear();
     std::unordered_map<int, int> labelToComponentIndex;
