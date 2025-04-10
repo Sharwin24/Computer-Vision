@@ -272,7 +272,7 @@ public:
     std::cout << "Filtered pixel data size: " << this->pixelData2D.size() << std::endl;
   }
 
-  void showComponentImages() {
+  void colorizeComponents() {
     // For the components that we found, create one image
     // where each component is in a different color or grayscale intensity
   }
