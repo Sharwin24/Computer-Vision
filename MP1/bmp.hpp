@@ -201,6 +201,17 @@ public:
         }
       }
     }
+
+    // Sort components by label and reassign to be contiguous
+    std::sort(this->components.begin(), this->components.end(),
+      [](const Component& a, const Component& b) {
+      return a.label < b.label;
+    });
+    uint32_t newLabel = 1;
+    for (auto& c : this->components) {
+      c.label = newLabel++;
+    }
+    // Print component information
     std::cout << "Found " << this->components.size() << " components" << std::endl;
     for (const auto& c : this->components) {
       std::cout << "Component " << c.label << ": Area = " << c.area << std::endl;
