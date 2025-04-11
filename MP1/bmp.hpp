@@ -2,7 +2,7 @@
  * @file bmp.hpp
  * @author Sharwin Patil (sharwinpatil@u.northwestern.edu)
  * @brief Support for BMP image processing
- * @version 0.1
+ * @version 1.0
  * @date 2025-04-10
  *
  * @copyright Copyright (c) 2025
