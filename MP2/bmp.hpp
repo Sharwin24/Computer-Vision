@@ -62,37 +62,34 @@ struct BMPColorHeader {
 #pragma pack(pop) // Restore the previous packing alignment
 // --------------- END_CITATION [1] ---------------- //
 
+/**
+ * @brief Representation of a component in an image
+ *        obtained through connected component labeling.
+ *
+ */
 struct Component {
   uint32_t label; // Unique Label of the component
   uint32_t area; // Number of pixels in the component
   std::vector<std::pair<uint8_t, uint8_t>> pixels; // List of pixel locations [row, col]
 };
 
-// StructuringElement for morphological operations
+/**
+ * @brief Struct describing a Kernel for Morphological Operations
+ *
+ */
 struct StructuringElement {
   std::vector<std::vector<uint8_t>> element;
-  int rows;
-  int cols;
-  int center_row;
-  int center_col;
+  const int rows;
+  const int cols;
 
   StructuringElement(int r, int c) : rows(r), cols(c) {
-    this->element.resize(r, std::vector<uint8_t>(c, 0));
-    this->center_row = r / 2;
-    this->center_col = c / 2;
+    this->element.resize(r, std::vector<uint8_t>(c, 1));
   }
 
   void setElement(int r, int c, uint8_t value) {
     if (r >= 0 && r < this->rows && c >= 0 && c < this->cols) {
       this->element[r][c] = value;
     }
-  }
-
-  uint8_t getElement(int r, int c) const {
-    if (r >= 0 && r < this->rows && c >= 0 && c < this->cols) {
-      return this->element[r][c];
-    }
-    return 0;
   }
 
   void print() const {
@@ -102,6 +99,13 @@ struct StructuringElement {
       }
       std::cout << std::endl;
     }
+  }
+
+  uint8_t operator()(int r, int c) const {
+    if (r >= 0 && r < this->rows && c >= 0 && c < this->cols) {
+      return this->element[r][c];
+    }
+    return 0;
   }
 };
 
