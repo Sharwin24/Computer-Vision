@@ -20,6 +20,7 @@
 #include <set>
 #include <unordered_map>
 #include <algorithm> // For std::remove_if
+#include <math.h>
 
 #pragma pack(push, 1) // Ensure no padding is added to the structures
 
@@ -82,6 +83,14 @@ struct StructuringElement {
   const int rows;
   const int cols;
 
+  StructuringElement() = delete;
+
+  /**
+   * @brief Create a SE Kernel with the given size. Kernel values all default to 1.
+   *
+   * @param r the number of rows in the kernel
+   * @param c the number of columns in the kernel
+   */
   StructuringElement(int r, int c) : rows(r), cols(c) {
     this->element.resize(r, std::vector<uint8_t>(c, 1));
   }
@@ -116,6 +125,20 @@ public:
   BMPImage(const char* filename) {
     this->read(filename);
     this->name = getImageName(filename);
+  }
+
+  BMPImage(const BMPImage& original)
+    : fileHeader(original.fileHeader),
+    infoHeader(original.infoHeader),
+    colorHeader(original.colorHeader),
+    pixelData2D(original.pixelData2D),
+    name(original.name),
+    components(original.components) {
+  }
+
+  BMPImage(const BMPImage& original, const std::vector<std::vector<uint8_t>>& pixelData)
+    : BMPImage(original) {
+    this->pixelData2D = pixelData;
   }
 
   ~BMPImage() = default;
@@ -397,29 +420,84 @@ public:
     std::cout << "Saved colored components to " << outputFilename << std::endl;
   }
 
-  void erosion() {
-    // Implement erosion operation
-    std::cout << "Erosion operation not implemented yet." << std::endl;
+  std::vector<std::vector<uint8_t>> erosion(const StructuringElement& kernel = StructuringElement(3, 3)) {
+    // E = A \oplus B = \{z \mid B_z \subseteq A \}
+    // Convolve the image with the kernel
+    const int R = this->pixelData2D.size();
+    const int C = this->pixelData2D[0].size();
+
+    std::vector<std::vector<uint8_t>> erodedImage(R, std::vector<uint8_t>(C, 0));
+    std::cout << "Erosion on " << this->infoHeader.bit_count << "-bit image" << std::endl;
+    for (int r = 0; r < R; r++) {
+      for (int c = 0; c < C; c++) {
+        uint8_t minValue = this->infoHeader.bit_count == 1 ? 1 : 255;
+        // Apply kernel to pixel location
+        for (int kr = -kernel.rows / 2; kr <= kernel.rows / 2; kr++) {
+          for (int kc = -kernel.cols / 2; kc <= kernel.cols / 2; kc++) {
+            // Skip if kernel value is 0
+            if (kernel(kr + kernel.rows / 2, kc + kernel.cols / 2) == 0) { continue; }
+            int imageR = r + kr;
+            int imageC = c + kc;
+            if (imageR >= 0 && imageR < R && imageC >= 0 && imageC < C) {
+              minValue = std::min(minValue, this->pixelData2D[imageR][imageC]);
+            } else {
+              minValue = 0;
+            }
+          }
+        }
+
+        // After applying the kernel, set the pixel value
+        erodedImage[r][c] = minValue;
+      }
+    }
+
+    return erodedImage;
   }
 
-  void dilation() {
-    // Implement dilation operation
-    std::cout << "Dilation operation not implemented yet." << std::endl;
+  std::vector<std::vector<uint8_t>> dilation(const StructuringElement& kernel = StructuringElement(3, 3)) {
+    // A \oplus B = \left\{z \mid \left(\hat{B}\right)_z \cap A \neq \phi \right\} 
+    // = \cup_{a_i \in A} B_{a_i}
+    // Convolve the image with the kernel
+    const int R = this->pixelData2D.size();
+    const int C = this->pixelData2D[0].size();
+
+    std::vector<std::vector<uint8_t>> dilatedImage(R, std::vector<uint8_t>(C, 0));
+    std::cout << "Dilation on " << this->infoHeader.bit_count << "-bit image" << std::endl;
+    for (int r = 0; r < R; r++) {
+      for (int c = 0; c < C; c++) {
+        uint8_t maxValue = 0;
+        // Apply kernel to pixel location
+        for (int kr = -kernel.rows / 2; kr <= kernel.rows / 2; kr++) {
+          for (int kc = -kernel.cols / 2; kc <= kernel.cols / 2; kc++) {
+            // Skip if kernel value is 0
+            if (kernel(kr + kernel.rows / 2, kc + kernel.cols / 2) == 0) { continue; }
+            int imageR = r + kr;
+            int imageC = c + kc;
+            if (imageR >= 0 && imageR < R && imageC >= 0 && imageC < C) {
+              maxValue = std::max(maxValue, this->pixelData2D[imageR][imageC]);
+            }
+          }
+        }
+
+        // After applying the kernel, set the pixel value
+        dilatedImage[r][c] = maxValue;
+      }
+    }
+
+    return dilatedImage;
   }
 
   void opening() {
-    // Implement opening operation
-    std::cout << "Opening operation not implemented yet." << std::endl;
+    // A \circ B = (A \ominus B) \oplus B
+
   }
 
   void closing() {
-    // Implement closing operation
-    std::cout << "Closing operation not implemented yet." << std::endl;
+    // A \bullet B = (A \oplus B) \ominus B
   }
 
   void boundary() {
-    // Implement boundary operation
-    std::cout << "Boundary operation not implemented yet." << std::endl;
+    // \beta(A) = A - (A \ominus B)
   }
 
   std::string getName() const { return this->name; }
@@ -691,7 +769,7 @@ private:
       throw std::runtime_error("Error writing pixel data to " + std::string(filename));
     }
 
-    std::cout << "Successfully wrote " << pixelData.size() << " bytes of pixel data" << std::endl;
+    std::cout << "Successfully wrote " << pixelData.size() << " bytes to " << filename << std::endl;
 
     // Close the file
     output.close();
