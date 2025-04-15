@@ -487,17 +487,37 @@ public:
     return dilatedImage;
   }
 
-  void opening() {
+  std::vector<std::vector<uint8_t>> opening(const StructuringElement& kernel = StructuringElement(3, 3)) {
     // A \circ B = (A \ominus B) \oplus B
-
+    std::vector<std::vector<uint8_t>> erodedImage = this->erosion(kernel);
+    BMPImage erodedBmp(*this, erodedImage);
+    std::vector<std::vector<uint8_t>> openedImage = erodedBmp.dilation(kernel);
+    return openedImage;
   }
 
-  void closing() {
+  std::vector<std::vector<uint8_t>> closing(const StructuringElement& kernel = StructuringElement(3, 3)) {
     // A \bullet B = (A \oplus B) \ominus B
+    std::vector<std::vector<uint8_t>> dilatedImage = this->dilation(kernel);
+    BMPImage dilatedBmp(*this, dilatedImage);
+    std::vector<std::vector<uint8_t>> closedImage = dilatedBmp.erosion(kernel);
+    return closedImage;
   }
 
-  void boundary() {
+  std::vector<std::vector<uint8_t>> boundary(const StructuringElement& kernel = StructuringElement(3, 3)) {
     // \beta(A) = A - (A \ominus B)
+    std::vector<std::vector<uint8_t>> erodedImage = this->erosion(kernel);
+    std::vector<std::vector<uint8_t>> boundaryImage(
+      this->pixelData2D.size(), std::vector<uint8_t>(this->pixelData2D[0].size(), 0)
+    );
+    // Perform pixel-wise subtraction
+    const int R = this->pixelData2D.size();
+    const int C = this->pixelData2D[0].size();
+    for (int r = 0; r < R; r++) {
+      for (int c = 0; c < C; c++) {
+        boundaryImage[r][c] = std::max(this->pixelData2D[r][c] - erodedImage[r][c], 0);
+      }
+    }
+    return boundaryImage;
   }
 
   std::string getName() const { return this->name; }
