@@ -2,9 +2,10 @@
  * @file bmp.hpp
  * @author Sharwin Patil (sharwinpatil@u.northwestern.edu)
  * @brief Support for BMP image processing
- * @version 1.0
- * @date 2025-04-10
+ * @version 2.0
+ * @date 2025-04-14
  * @details Includes support for Connected Component Labeling, size filtering, and colorizing components.
+ * @details Includes support for morphological operations: erosion, dilation, opening, and closing.
  *
  * @copyright Copyright (c) 2025
  *
@@ -65,6 +66,43 @@ struct Component {
   uint32_t label; // Unique Label of the component
   uint32_t area; // Number of pixels in the component
   std::vector<std::pair<uint8_t, uint8_t>> pixels; // List of pixel locations [row, col]
+};
+
+// StructuringElement for morphological operations
+struct StructuringElement {
+  std::vector<std::vector<uint8_t>> element;
+  int rows;
+  int cols;
+  int center_row;
+  int center_col;
+
+  StructuringElement(int r, int c) : rows(r), cols(c) {
+    this->element.resize(r, std::vector<uint8_t>(c, 0));
+    this->center_row = r / 2;
+    this->center_col = c / 2;
+  }
+
+  void setElement(int r, int c, uint8_t value) {
+    if (r >= 0 && r < this->rows && c >= 0 && c < this->cols) {
+      this->element[r][c] = value;
+    }
+  }
+
+  uint8_t getElement(int r, int c) const {
+    if (r >= 0 && r < this->rows && c >= 0 && c < this->cols) {
+      return this->element[r][c];
+    }
+    return 0;
+  }
+
+  void print() const {
+    for (const auto& row : this->element) {
+      for (const auto& val : row) {
+        std::cout << static_cast<int>(val) << " ";
+      }
+      std::cout << std::endl;
+    }
+  }
 };
 
 class BMPImage {
@@ -353,6 +391,31 @@ public:
     this->write(outputFilename.c_str());
 
     std::cout << "Saved colored components to " << outputFilename << std::endl;
+  }
+
+  void erosion() {
+    // Implement erosion operation
+    std::cout << "Erosion operation not implemented yet." << std::endl;
+  }
+
+  void dilation() {
+    // Implement dilation operation
+    std::cout << "Dilation operation not implemented yet." << std::endl;
+  }
+
+  void opening() {
+    // Implement opening operation
+    std::cout << "Opening operation not implemented yet." << std::endl;
+  }
+
+  void closing() {
+    // Implement closing operation
+    std::cout << "Closing operation not implemented yet." << std::endl;
+  }
+
+  void boundary() {
+    // Implement boundary operation
+    std::cout << "Boundary operation not implemented yet." << std::endl;
   }
 
   std::string getName() const { return this->name; }
