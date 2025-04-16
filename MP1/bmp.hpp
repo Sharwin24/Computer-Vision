@@ -4,10 +4,9 @@
  * @brief Support for BMP image processing
  * @version 1.0
  * @date 2025-04-10
- * @details Includes support for Connected Component Labeling, size filtering, and colorizing components.
+ * @details 1.0 - Includes support for Connected Component Labeling, size filtering, and colorizing components.
  *
  * @copyright Copyright (c) 2025
- *
  */
 
 #ifndef BMP_HPP

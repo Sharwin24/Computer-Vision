@@ -4,8 +4,8 @@
  * @brief Support for BMP image processing
  * @version 2.0
  * @date 2025-04-14
- * @details Includes support for Connected Component Labeling, size filtering, and colorizing components.
- * @details Includes support for morphological operations: erosion, dilation, opening, and closing.
+ * @details 1.0 - Includes support for Connected Component Labeling, size filtering, and colorizing components.
+ * @details 2.0 - Includes support for morphological operations: erosion, dilation, opening, and closing.
  *
  * @copyright Copyright (c) 2025
  *
@@ -412,7 +412,7 @@ public:
   }
 
   std::vector<std::vector<uint8_t>> erosion(const StructuringElement& kernel = StructuringElement(3, 3)) {
-    // E = A \oplus B = \{z \mid B_z \subseteq A \}
+    // E = A \ominus B = \{z \mid B_z \subseteq A \}
     // Convolve the image with the kernel
     const int R = this->pixelData2D.size();
     const int C = this->pixelData2D[0].size();
