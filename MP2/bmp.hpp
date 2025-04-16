@@ -101,15 +101,6 @@ struct StructuringElement {
     }
   }
 
-  void print() const {
-    for (const auto& row : this->element) {
-      for (const auto& val : row) {
-        std::cout << static_cast<int>(val) << " ";
-      }
-      std::cout << std::endl;
-    }
-  }
-
   uint8_t operator()(int r, int c) const {
     if (r >= 0 && r < this->rows && c >= 0 && c < this->cols) {
       return this->element[r][c];
