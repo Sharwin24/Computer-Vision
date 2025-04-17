@@ -565,15 +565,6 @@ private:
         binaryImage[r][c] = this->pixelData2D[r][c] == 0 ? 0 : 1;
       }
     }
-    // // Print binary image for debugging
-    // std::cout << "Binary Image:" << std::endl;
-    // for (const auto& row : binaryImage) {
-    //   for (const auto& pixel : row) {
-    //     std::cout << pixel << " ";
-    //   }
-    //   std::cout << std::endl;
-    // }
-    // std::cout << std::endl;
     return binaryImage;
   }
 
