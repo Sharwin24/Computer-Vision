@@ -607,6 +607,8 @@ private:
     // If 32 bits per pixel, read the color header as well
     if (this->infoHeader.bit_count == 32) {
       file.read(reinterpret_cast<char*>(&this->colorHeader), sizeof(this->colorHeader));
+    } else if (this->infoHeader.bit_count == 24) {
+      std::cerr << "Reading 24-bit BMP images is not implemented yet." << std::endl;
     } else if (this->infoHeader.bit_count <= 8) {
       int colorTableEntries = 1 << this->infoHeader.bit_count;
       if (this->infoHeader.colors_used > 0) {
@@ -635,8 +637,7 @@ private:
     if (!file) {
       throw std::runtime_error("Error reading pixel data from " + std::string(filename));
     }
-    std::cout << "Successfully read " << imageSize << " bytes of pixel data" << std::endl;
-    std::cout << "Pixel data size: " << pixelData.size() << " bytes" << std::endl;
+    std::cout << "Successfully read " << imageSize << " bytes of pixel data from " << filename << std::endl;
 
     // Convert pixel data to 2D array matching image dimensions
     this->pixelData2D.resize(std::abs(this->infoHeader.height), std::vector<uint8_t>(this->infoHeader.width, 0));
