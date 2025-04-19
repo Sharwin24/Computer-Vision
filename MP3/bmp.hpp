@@ -608,13 +608,12 @@ private:
     if (this->infoHeader.bit_count == 32) {
       file.read(reinterpret_cast<char*>(&this->colorHeader), sizeof(this->colorHeader));
     } else if (this->infoHeader.bit_count == 24) {
-      std::cerr << "Reading 24-bit BMP images is not implemented yet." << std::endl;
+      std::cout << "24-bit BMP image detected" << std::endl;
     } else if (this->infoHeader.bit_count <= 8) {
       int colorTableEntries = 1 << this->infoHeader.bit_count;
       if (this->infoHeader.colors_used > 0) {
         colorTableEntries = this->infoHeader.colors_used;
       }
-
       // Skip color table
       file.seekg(colorTableEntries * sizeof(uint32_t), std::ios::cur);
     }
@@ -622,9 +621,10 @@ private:
     // Move file pointer to beginning of pixel data
     file.seekg(this->fileHeader.offset_data, std::ios::beg);
 
-    int rowSize = ((this->infoHeader.bit_count * this->infoHeader.width + 31) / 32) * 4;
-    // For safety, use absolute heigh since BMP height can be negative
-    int imageSize = rowSize * std::abs(this->infoHeader.height);
+    // The row size must be a multiple of 4 bytes
+    const int rowSize = ((this->infoHeader.bit_count * this->infoHeader.width + 31) / 32) * 4;
+    // For safety, use absolute height since BMP height can be negative
+    const int imageSize = rowSize * std::abs(this->infoHeader.height);
 
     // Determine image size
     if (this->infoHeader.size_image == 0) {
@@ -640,14 +640,22 @@ private:
     std::cout << "Successfully read " << imageSize << " bytes of pixel data from " << filename << std::endl;
 
     // Convert pixel data to 2D array matching image dimensions
-    this->pixelData2D.resize(std::abs(this->infoHeader.height), std::vector<uint8_t>(this->infoHeader.width, 0));
+    const int bytesPerRow = this->infoHeader.bit_count == 24 ? 3 * this->infoHeader.width : this->infoHeader.width;
+    this->pixelData2D.clear();
+    this->pixelData2D.resize(std::abs(this->infoHeader.height), std::vector<uint8_t>(bytesPerRow, 0));
     for (int r = 0; r < std::abs(this->infoHeader.height); ++r) {
+      const int rowIndex = (std::abs(this->infoHeader.height) - 1 - r) * rowSize; // BMP stores pixel data in reverse order (bottom-up)
       for (int c = 0; c < this->infoHeader.width; ++c) {
         // Origin is at the bottom left corner
         // BMP stores pixel data in reverse order (bottom-up)
         // For 1-bit images, we need to extract the bits from the byte
         if (this->infoHeader.bit_count == 1) {
           this->pixelData2D[std::abs(this->infoHeader.height) - 1 - r][c] = ((pixelData[r * rowSize + c / 8] >> (7 - (c % 8))) & 0x01);
+        } else if (this->infoHeader.bit_count == 24) {
+          int pixelIndex = rowIndex + c * 3;
+          this->pixelData2D[r][c * 3 + 0] = pixelData[pixelIndex + 0]; // Blue
+          this->pixelData2D[r][c * 3 + 1] = pixelData[pixelIndex + 1]; // Green
+          this->pixelData2D[r][c * 3 + 2] = pixelData[pixelIndex + 2]; // Red
         } else {
           this->pixelData2D[std::abs(this->infoHeader.height) - 1 - r][c] = pixelData[r * rowSize + c];
         }
