@@ -740,7 +740,7 @@ private:
     if (!file) {
       throw std::runtime_error("Error reading pixel data from " + std::string(filename));
     }
-    std::cout << "Successfully read " << imageSize << " bytes of pixel data from " << filename << std::endl;
+    std::cout << "Successfully read " << imageSize << " bytes from " << filename << std::endl;
 
     // Convert pixel data to 2D array matching image dimensions
     const int bytesPerRow = this->infoHeader.bit_count == 24 ? 3 * this->infoHeader.width : this->infoHeader.width;
