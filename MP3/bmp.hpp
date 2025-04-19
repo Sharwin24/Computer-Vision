@@ -551,6 +551,48 @@ public:
         grayscaleImage[r][c] = cumulativeHistogram[grayscaleImage[r][c]];
       }
     }
+    // Copy the image into pixel data
+    this->pixelData2D.resize(numRows, std::vector<uint8_t>(numCols * 3, 0)); // RGB image
+    for (int r = 0; r < numRows; ++r) {
+      for (int c = 0; c < numCols; ++c) {
+        // Set the RGB values in the pixel data (BGR order for BMP)
+        this->pixelData2D[r][c * 3] = grayscaleImage[r][c];     // Blue
+        this->pixelData2D[r][c * 3 + 1] = grayscaleImage[r][c]; // Green
+        this->pixelData2D[r][c * 3 + 2] = grayscaleImage[r][c]; // Red
+      }
+    }
+    // Update the BMP info header for 24-bit color depth
+    this->infoHeader.bit_count = 24;
+    int rowSize = ((this->infoHeader.bit_count * this->infoHeader.width + 31) / 32) * 4;
+    this->infoHeader.size_image = rowSize * std::abs(this->infoHeader.height);
+    this->infoHeader.colors_used = 0; // Not used for 24-bit images
+    this->infoHeader.compression = 0; // No compression
+    this->infoHeader.size = sizeof(BMPInfoHeader);
+    // Update the file header offset to point to the new pixel data
+    this->fileHeader.offset_data = sizeof(BMPFileHeader) + sizeof(BMPInfoHeader);
+    // Update the file size
+    this->fileHeader.file_size = this->fileHeader.offset_data + this->infoHeader.size_image;
+    // Save the histogram to a CSV file if requested
+    if (saveToCSV) {
+      const std::string HName = this->name + "_histogram.csv";
+      const std::string CHName = this->name + "_cumulative_histogram.csv";
+      std::ofstream csvFile(HName);
+      std::ofstream csvFileC(CHName);
+      if (csvFile.is_open() && csvFileC.is_open()) {
+        for (const auto& entry : histogram) {
+          csvFile << entry.first << "," << entry.second << "\n";
+        }
+        for (const auto& entry : cumulativeHistogram) {
+          csvFileC << entry.first << "," << entry.second << "\n";
+        }
+        csvFile.close();
+        csvFileC.close();
+        std::cout << "Histogram saved to " << HName << std::endl;
+        std::cout << "Cumulative histogram saved to " << CHName << std::endl;
+      } else {
+        std::cerr << "Unable to open histogram CSV file" << std::endl;
+      }
+    }
   }
 
   void lightingCorrection(bool linear = true) {

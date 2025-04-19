@@ -21,7 +21,13 @@ int main(int argc, const char* argv[]) {
       std::cout << "Processing " << image << std::endl;
       BMPImage bmp(image.c_str());
       bmp.printInfo();
-      bmp.save("moon_output.bmp"); // Attempt to read/write a 24-bit image
+      bmp.histogramEquilization(true);
+      bmp.save("moon_equalized.bmp");
+      bmp.lightingCorrection();
+      bmp.save("moon_lighting_linear.bmp");
+      BMPImage bmp2(image.c_str());
+      bmp2.lightingCorrection(false);
+      bmp2.save("moon_lighting_quadratic.bmp");
       std::cout << "==========================" << std::endl;
     }
     catch (const std::exception& e) {
