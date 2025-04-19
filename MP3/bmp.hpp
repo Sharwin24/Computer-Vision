@@ -512,9 +512,45 @@ public:
     return boundaryImage;
   }
 
-  void histogramEquilization() {
+  void histogramEquilization(bool saveToCSV = false) {
     // Convert 24-bit image to grayscale
-    // Apply histogram equilzation
+    std::vector<std::vector<int>> grayscaleImage = this->convertToGrayscaleImage();
+    // Apply histogram equilization to the grayscale image
+    const int numRows = grayscaleImage.size();
+    const int numCols = grayscaleImage[0].size();
+    std::unordered_map<int, int> histogram;
+    histogram.reserve(256); // Reserve space for 256 possible pixel values
+    for (int r = 0; r < numRows; ++r) {
+      for (int c = 0; c < numCols; ++c) {
+        histogram[grayscaleImage[r][c]]++;
+      }
+    }
+    // --------------- BEGIN_CITATION [3] ---------------- //
+    // https://hypjudy.github.io/2017/03/19/dip-histogram-equalization/
+    // Transform histogram to cumulative histogram
+    // T(r_k) = \sum_{j=0}^k P(r_j) \cdot L_2
+    // P(r_j): The mass distribution of r_j
+    // L2: The number of levels in the image (256 for 8-bit grayscale)
+    const int L2 = 256;
+    std::unordered_map<int, int> cumulativeHistogram;
+    cumulativeHistogram.reserve(256); // Reserve space for 256 possible pixel values
+    const int numPixels = numRows * numCols;
+    int cumulativeSum = 0;
+    for (int k = 0; k < 256; ++k) {
+      // Transform from histogram to cumulative histogram
+      // s_k = T(r_k) = round(cdf(r_k) * (L2 - 1))
+      cumulativeSum += histogram[k];
+      float cdf = static_cast<float>(cumulativeSum) / numPixels;
+      cumulativeHistogram[k] = std::round(cdf * (L2 - 1)); // Scale to [0, L2-1]
+    }
+    // --------------- END_CITATION [3] ---------------- //
+    // Apply the transformation to the grayscale image
+    for (int r = 0; r < numRows; ++r) {
+      for (int c = 0; c < numCols; ++c) {
+        // Apply the transformation to the pixel value
+        grayscaleImage[r][c] = cumulativeHistogram[grayscaleImage[r][c]];
+      }
+    }
   }
 
   void lightingCorrection(bool linear = true) {
@@ -568,6 +604,31 @@ private:
     return binaryImage;
   }
 
+  std::vector<std::vector<int>> convertToGrayscaleImage() {
+    std::vector<std::vector<int>> grayscaleImage;
+    const int numRows = std::abs(this->infoHeader.height);
+    const int numCols = this->infoHeader.width;
+    grayscaleImage.resize(numRows, std::vector<int>(numCols, 0));
+    for (int r = 0; r < numRows; ++r) {
+      for (int c = 0; c < numCols; ++c) {
+        // Convert RGB to grayscale using the luminosity method
+        int rValue = this->pixelData2D[r][c * 3 + 2]; // Red
+        int gValue = this->pixelData2D[r][c * 3 + 1]; // Green
+        int bValue = this->pixelData2D[r][c * 3 + 0]; // Blue
+        grayscaleImage[r][c] = BMPImage::rgbToGrayScale(rValue, gValue, bValue);
+      }
+    }
+    return grayscaleImage;
+  }
+
+  const inline static int rgbToGrayScale(const int r, const int g, const int b) {
+    // --------------- BEGIN_CITATION [2] ---------------- //
+    // https://www.grayscaleimage.com/three-algorithms-for-converting-color-to-grayscale/
+    // Luminosity method
+    return static_cast<int>(0.299f * r + 0.587f * g + 0.114f * b);
+    // --------------- END_CITATION [2] ---------------- //
+  }
+
   std::string getImageName(const char* filename) {
     // Extract the image name from the filename
     // "test.bmp" -> "test"
@@ -605,10 +666,10 @@ private:
     }
 
     // If 32 bits per pixel, read the color header as well
+    // 24-bit images do not have a color header
+    // 1-bit images have a color table instead of a color header
     if (this->infoHeader.bit_count == 32) {
       file.read(reinterpret_cast<char*>(&this->colorHeader), sizeof(this->colorHeader));
-    } else if (this->infoHeader.bit_count == 24) {
-      std::cout << "24-bit BMP image detected" << std::endl;
     } else if (this->infoHeader.bit_count <= 8) {
       int colorTableEntries = 1 << this->infoHeader.bit_count;
       if (this->infoHeader.colors_used > 0) {
