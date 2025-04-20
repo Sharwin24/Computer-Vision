@@ -726,7 +726,7 @@ private:
     // --------------- BEGIN_CITATION [2] ---------------- //
     // https://www.grayscaleimage.com/three-algorithms-for-converting-color-to-grayscale/
     // Luminosity method
-    return static_cast<int>(0.299f * r + 0.587f * g + 0.114f * b);
+    return static_cast<int>(0.299f * r + 0.587f * g + 0.114f * b); // [0, 255]
     // --------------- END_CITATION [2] ---------------- //
   }
 
@@ -812,7 +812,10 @@ private:
         // BMP stores pixel data in reverse order (bottom-up)
         // For 1-bit images, we need to extract the bits from the byte
         if (this->infoHeader.bit_count == 1) {
-          this->pixelData2D[std::abs(this->infoHeader.height) - 1 - r][c] = ((pixelData[r * rowSize + c / 8] >> (7 - (c % 8))) & 0x01);
+          // c / 8 gives the byte index, Then we shift the byte to get to the bit
+          // c % 8 gives the bit index in the byte, and then the bit is extracted by ANDing with 0x01
+          uint8_t bit = ((pixelData[r * rowSize + c / 8] >> (7 - (c % 8))) & 0x01);
+          this->pixelData2D[std::abs(this->infoHeader.height) - 1 - r][c] = bit;
         } else if (this->infoHeader.bit_count == 24) {
           int pixelIndex = rowIndex + c * 3;
           this->pixelData2D[r][c * 3 + 0] = pixelData[pixelIndex + 0]; // Blue
