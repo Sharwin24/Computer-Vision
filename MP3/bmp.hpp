@@ -597,7 +597,66 @@ public:
 
   void lightingCorrection(bool linear = true) {
     // Convert 24-bit image to grayscale
-    // Apply lighting correction to the image
+    std::vector<std::vector<int>> grayscaleImage = this->convertToGrayscaleImage();
+    // Find the min and max pixel values in the grayscale image
+    int minPixelValue = 255;
+    int maxPixelValue = 0;
+    for (const auto& row : grayscaleImage) {
+      for (const auto& pixel : row) {
+        minPixelValue = std::min(minPixelValue, pixel);
+        maxPixelValue = std::max(maxPixelValue, pixel);
+      }
+    }
+    // Least-squares linear correction
+    // PsuedoInverse: pinv(A) = (A^T * A)^-1 * A^T
+    // y = Ax + b
+    // y: output pixel value
+    // x: input pixel value
+    // A: matrix of pixel values
+    // b: bias term
+    const float MAX_PIXEL_VALUE = 255.0f;
+    float A[2];
+    if (linear) { // Linear correction
+      A[0] = static_cast<float>(maxPixelValue - minPixelValue) / MAX_PIXEL_VALUE; // Scale factor
+      A[1] = static_cast<float>(minPixelValue); // Bias term
+    } else { // Quadratic correction
+      A[0] = static_cast<float>(maxPixelValue - minPixelValue) / (MAX_PIXEL_VALUE * MAX_PIXEL_VALUE); // Scale factor
+      A[1] = static_cast<float>(minPixelValue); // Bias term
+    }
+    // Apply the correction to the grayscale image
+    const int numRows = grayscaleImage.size();
+    const int numCols = grayscaleImage[0].size();
+    for (int r = 0; r < numRows; ++r) {
+      for (int c = 0; c < numCols; ++c) {
+        // Apply the correction to the pixel value
+        if (linear) {
+          grayscaleImage[r][c] = std::min(static_cast<int>(A[0] * grayscaleImage[r][c] + A[1]), 255);
+        } else {
+          grayscaleImage[r][c] = std::min(static_cast<int>(A[0] * grayscaleImage[r][c] * grayscaleImage[r][c] + A[1]), 255);
+        }
+      }
+    }
+    // Copy the image into pixel data
+    this->pixelData2D.resize(numRows, std::vector<uint8_t>(numCols * 3, 0)); // RGB image
+    for (int r = 0; r < numRows; ++r) {
+      for (int c = 0; c < numCols; ++c) {
+        // Set the RGB values in the pixel data (BGR order for BMP)
+        this->pixelData2D[r][c * 3] = grayscaleImage[r][c];     // Blue
+        this->pixelData2D[r][c * 3 + 1] = grayscaleImage[r][c]; // Green
+        this->pixelData2D[r][c * 3 + 2] = grayscaleImage[r][c]; // Red
+      }
+    }
+    // Update the BMP info header for 24-bit color depth
+    this->infoHeader.bit_count = 24;
+    int rowSize = ((this->infoHeader.bit_count * this->infoHeader.width + 31) / 32) * 4;
+    this->infoHeader.size_image = rowSize * std::abs(this->infoHeader.height);
+    this->infoHeader.colors_used = 0; // Not used for 24-bit images
+    this->infoHeader.compression = 0; // No compression
+    this->infoHeader.size = sizeof(BMPInfoHeader);
+    // Update the file header offset to point to the new pixel data
+    this->fileHeader.offset_data = sizeof(BMPFileHeader) + sizeof(BMPInfoHeader);
+    // Update the file size
+    this->fileHeader.file_size = this->fileHeader.offset_data + this->infoHeader.size_image;
   }
 
   std::string getName() const { return this->name; }
