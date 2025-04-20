@@ -608,12 +608,6 @@ public:
       }
     }
     // Least-squares linear correction
-    // PsuedoInverse: pinv(A) = (A^T * A)^-1 * A^T
-    // y = Ax + b
-    // y: output pixel value
-    // x: input pixel value
-    // A: matrix of pixel values
-    // b: bias term
     const float MAX_PIXEL_VALUE = 255.0f;
     float A[2];
     if (linear) { // Linear correction
