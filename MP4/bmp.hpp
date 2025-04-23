@@ -787,7 +787,6 @@ public:
     }
     std::cout << "2D Color Histogram saved to " << HName << std::endl;
   }
-
 private:
   BMPFileHeader fileHeader;
   BMPInfoHeader infoHeader;
