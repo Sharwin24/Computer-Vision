@@ -96,9 +96,11 @@ int main() {
       std::cout << "Processing " << image << std::endl;
       BMPImage bmp(image.c_str());
       bmp.printInfo();
-      // std::vector<std::pair<int, int>> region = bmp.selectRegion();
       const std::string regionPixelsFile = bmp.getName() + "_skin_pixels.txt";
-      // savePixels(region, regionPixelsFile); // ONLY RUN THIS ONCE TO SAVE PIXELS
+      // ======== ONLY RUN THIS ONCE TO SELECT PIXEL REGION WITH MOUSE ======== //
+      // std::vector<std::pair<int, int>> region = bmp.selectRegion();
+      // savePixels(region, regionPixelsFile); 
+      // ====================================================================== //
       bmp.createHistogramFromFile(regionPixelsFile, ColorSpace::BGR);
       bmp.createHistogramFromFile(regionPixelsFile, ColorSpace::HSI);
       histogramFiles.push_back(bmp.getName() + "_BGR_histogram.csv");
