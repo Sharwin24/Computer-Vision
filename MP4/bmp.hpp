@@ -14,6 +14,7 @@
  * - Pixel struct/class
  * - Doxygen for everything
  * - Store Pixel locations as a set instead of a vector
+ * - Support color space conversion between different color spaces (BGR -> HSI, HSI -> BGR, etc.)
  *
  * @copyright Copyright (c) 2025
  */
@@ -124,8 +125,8 @@ public:
 
 enum class ColorSpace {
   BGR, // Blue, Green, Red (default for BMP)
-  HSV, // Hue, Saturation, Value
   HSI, // Hue, Saturation, Intensity
+  NBGR, // Normalized BGR
 };
 
 class BMPImage {
@@ -162,7 +163,7 @@ public:
     std::cout << "File Size: " << this->fileHeader.file_size << " bytes" << std::endl;
     std::cout << "Width: " << this->infoHeader.width << " pixels" << std::endl;
     std::cout << "Height: " << this->infoHeader.height << " pixels" << std::endl;
-    std::cout << "NumPixels: " << this->pixelData2D.size() * this->pixelData2D[0].size() << std::endl;
+    std::cout << "NumPixels: " << this->infoHeader.width * this->infoHeader.height << std::endl;
     std::cout << "ImageSize: " << this->infoHeader.size_image << " bytes" << std::endl;
     std::cout << "Bit Count: " << this->infoHeader.bit_count << std::endl;
     std::cout << "Compression: " << this->infoHeader.compression << std::endl;
@@ -724,7 +725,7 @@ public:
     return selectedPixels;
   }
 
-  void createHistogramFromFile(const std::string filename) {
+  void createHistogramFromFile(const std::string filename, const ColorSpace colorSpace = ColorSpace::BGR) {
     // The file passed in is a txt file containing pixel coordinates
     // The pixel values correspond to the pixel values in the original image
     // that were selected by the user
@@ -733,36 +734,51 @@ public:
       std::cerr << "Error opening file: " << filename << std::endl;
       return;
     }
+    std::cout << "Creating histogram from file: " << filename << std::endl;
     std::vector<std::pair<int, int>> selectedPixels;
     std::string line;
     while (std::getline(file, line)) {
       std::istringstream iss(line);
       int x, y;
-      if (iss >> x >> y) {
+      if (iss >> y >> x) {
         selectedPixels.emplace_back(y, x); // Store the selected pixel
       }
     }
     file.close();
-    // Select a good color space, e.g. RGB, N-RGB, HSI, etc.
+    std::cout << "Found " << selectedPixels.size() << " selected pixels" << std::endl;
     // Construct a 2D color histogram based on the
     // color pixels you have collected (R-G, NR-NG, H-S)
-
+    this->setColorSpace(colorSpace);
     // Images are 24-bit color so we have access to 3 channels
     std::vector<std::vector<int>> histogram(256, std::vector<int>(3, 0)); // 3 channels (R, G, B)
     for (const auto& pixel : selectedPixels) {
-      int r = this->pixelData2D[pixel.first][pixel.second * 3 + 2]; // Red
-      int g = this->pixelData2D[pixel.first][pixel.second * 3 + 1]; // Green
-      int b = this->pixelData2D[pixel.first][pixel.second * 3 + 0]; // Blue
-      histogram[r][0]++;
-      histogram[g][1]++;
-      histogram[b][2]++;
+      switch (this->colorSpace) {
+      case ColorSpace::BGR: case ColorSpace::NBGR: {
+        int b = this->pixelData2D[pixel.first][pixel.second * 3 + 0]; // Blue
+        int g = this->pixelData2D[pixel.first][pixel.second * 3 + 1]; // Green
+        int r = this->pixelData2D[pixel.first][pixel.second * 3 + 2]; // Red
+        histogram[r][0]++;
+        histogram[g][1]++;
+        histogram[b][2]++;
+        break;
+      }
+      case ColorSpace::HSI: {
+        int h = this->pixelData2D[pixel.first][pixel.second * 3 + 0]; // Hue
+        int s = this->pixelData2D[pixel.first][pixel.second * 3 + 1]; // Saturation
+        int i = this->pixelData2D[pixel.first][pixel.second * 3 + 2]; // Intensity
+        histogram[h][0]++;
+        histogram[s][1]++;
+        histogram[i][2]++;
+        break;
+      }
+      }
     }
     // Save the histogram to a CSV file
-    const std::string HName = this->name + "_histogram.csv";
+    const std::string HName = this->name + "_" + this->colorSpaceName(this->colorSpace) + "_histogram.csv";
     std::ofstream csvFile(HName);
     if (csvFile.is_open()) {
       for (int i = 0; i < 256; ++i) {
-        csvFile << i << "," << histogram[i][0] << "," << histogram[i][1] << "," << histogram[i][2] << "\n";
+        csvFile << histogram[i][0] << "," << histogram[i][1] << "," << histogram[i][2] << "\n";
       }
       csvFile.close();
       std::cout << "Histogram saved to " << HName << std::endl;
@@ -856,6 +872,87 @@ private:
     // Luminosity method
     return static_cast<int>(0.299f * r + 0.587f * g + 0.114f * b); // [0, 255]
     // --------------- END_CITATION [2] ---------------- //
+  }
+
+  void setColorSpace(const ColorSpace colorSpace) {
+    if (colorSpace == this->colorSpace) { return; } // No change
+    // Convert the pixel data to the new color space
+    if (this->colorSpace != ColorSpace::BGR) {
+      // For now, we can assume the previous color space was BGR
+      throw std::runtime_error("Color space conversion from " + this->colorSpaceName(this->colorSpace) +
+        " to " + this->colorSpaceName(colorSpace) + " is not implemented");
+    }
+    std::cout << "Converting image from " << this->colorSpaceName(this->colorSpace) <<
+      " to " << this->colorSpaceName(colorSpace) << std::endl;
+    const int R = std::abs(this->infoHeader.height);
+    const int C = this->infoHeader.width;
+    switch (colorSpace) {
+    case ColorSpace::BGR: {
+      // No conversion needed
+      break;
+    }
+    case ColorSpace::NBGR: {
+      for (int r = 0; r < R; r++) {
+        for (int c = 0; c < C; c++) {
+          // Convert BGR to NBGR
+          int b = this->pixelData2D[r][c * 3 + 0]; // Blue
+          int g = this->pixelData2D[r][c * 3 + 1]; // Green
+          int r = this->pixelData2D[r][c * 3 + 2]; // Red
+          // Normalize RGB values
+          float sum = b + g + r + 1e-6f; // Avoid division by zero
+          this->pixelData2D[r][c * 3 + 0] = static_cast<uint8_t>((b / sum) * 255); // N-Red
+          this->pixelData2D[r][c * 3 + 1] = static_cast<uint8_t>((g / sum) * 255); // N-Green
+          this->pixelData2D[r][c * 3 + 2] = static_cast<uint8_t>((r / sum) * 255); // N-Blue
+        }
+      }
+      break;
+    }
+    case ColorSpace::HSI: {
+      for (int r = 0; r < R; r++) {
+        for (int c = 0; c < C; c++) {
+          // Convert BGR to HSI
+          const int b = this->pixelData2D[r][c * 3 + 0]; // Blue
+          const int g = this->pixelData2D[r][c * 3 + 1]; // Green
+          const int r = this->pixelData2D[r][c * 3 + 2]; // Red
+          // --------------- BEGIN_CITATION [4] ---------------- //
+          // https://www.had2know.org/technology/hsi-rgb-color-converter-equations.html
+          float numerator = r - 0.5f * (g + b);
+          float denominator = std::sqrt(r * r + g * g + b * b - r * g - r * b - g * b);
+          const float EPSILON = 1e-4f; // Small value to avoid division by zero
+          float theta = std::acos(numerator / (denominator + EPSILON)); // [rad]
+          float I = (r + g + b) / 3.0f; // Intensity [0, 255]
+          float S = (I == 0) ? 0 : 1 - (std::min({r, g, b}) / I); // Saturation [0, 1]
+          float H = (g >= b) ? theta : (2 * M_PI - theta); // Hue [0, pi] or [pi, 2pi]
+          // Convert Hue to Degrees and normalize between [0, 180]
+          H = H * 180.0f / (2 * M_PI); // Hue [0, 180]
+          // Normalize Saturation to be between [0, 255]
+          S = S * 255.0f; // Saturation [0, 255]
+          std::cout << "Converted BGR [" << b << ", " << g << ", " << r << "] to HSI [" <<
+            H << ", " << S << ", " << I << "]" << std::endl;
+          // --------------- END_CITATION [4] ---------------- //
+          // Assign the HSI values to the pixel data
+          this->pixelData2D[r][c * 3 + 0] = static_cast<uint8_t>(H); // H
+          this->pixelData2D[r][c * 3 + 1] = static_cast<uint8_t>(S); // S
+          this->pixelData2D[r][c * 3 + 2] = static_cast<uint8_t>(I); // I
+        }
+      }
+      break;
+    }
+    default: {
+      throw std::runtime_error("Unsupported color space");
+    }
+    }
+    std::cout << "Converted image to " << this->colorSpaceName(colorSpace) << " color space" << std::endl;
+    this->colorSpace = colorSpace; // Update the color space
+  }
+
+  std::string colorSpaceName(const ColorSpace colorSpace) const {
+    switch (colorSpace) {
+    case ColorSpace::BGR: { return "BGR"; }
+    case ColorSpace::HSI: { return "HSI"; }
+    case ColorSpace::NBGR: { return "NBGR"; }
+    default: { return "Unknown"; }
+    }
   }
 
   std::string getImageName(const char* filename) {
