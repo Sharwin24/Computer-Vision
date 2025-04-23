@@ -778,7 +778,7 @@ public:
     std::ofstream csvFile(HName);
     if (csvFile.is_open()) {
       for (int i = 0; i < 256; ++i) {
-        csvFile << histogram[i][0] << "," << histogram[i][1] << "," << histogram[i][2] << "\n";
+        csvFile << i << "," << histogram[i][0] << "," << histogram[i][1] << "," << histogram[i][2] << "\n";
       }
       csvFile.close();
       std::cout << "Histogram saved to " << HName << std::endl;

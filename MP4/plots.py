@@ -2,31 +2,20 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 
-def plot_histograms(csv_files, figure_title):
+def plot_histograms(csv_files):
     plt.figure(figsize=(12, 6))
-    for i, h in enumerate(csv_files):
-        data = np.loadtxt(h, delimiter=",")
-        plt.subplot(1, 2, i + 1)
-        if i == 0:
-            plt.scatter(data[:, 0], data[:, 1], color='blue', s=10)
-            # Connect the points with lines in x-order
-            sorted_indices = np.argsort(data[:, 0])
-            plt.plot(data[sorted_indices, 0],
-                     data[sorted_indices, 1], color='blue', linewidth=2)
-            plt.fill_between(data[sorted_indices, 0],
-                             data[sorted_indices, 1], color='blue', alpha=0.2)
-            area = np.trapezoid(data[:, 1], data[:, 0])
-            plt.text(0.75, 0.5, f"Area = {area:.2f}", fontsize=12,
-                     ha='center', va='center', transform=plt.gca().transAxes)
-        else:
-            plt.plot(data[:, 0], data[:, 1], color='blue', linewidth=2)
-            plt.fill_between(data[:, 0], data[:, 1], color='blue', alpha=0.2)
-            area = np.trapezoid(data[:, 1], data[:, 0])
-            plt.text(0.75, 0.5, f"Area = {area:.2f}", fontsize=12,
-                     ha='center', va='center', transform=plt.gca().transAxes)
-        plt.title(histogram_titles[i])
+    for i, file in enumerate(csv_files):
+        data = np.loadtxt(file, delimiter=",")
+        # CSV has 4 columns for [Pixel Value, B, G, R]
+        name = file.split("_")[0]
+        color_space = file.split("_")[1]
+        plt.subplot(1, len(csv_files), i + 1)
+        plt.title(f"2D {color_space.upper()} Histogram of {name.upper()}")
+        plt.plot(data[:, 0], data[:, 1], color='blue', label='B')
+        plt.plot(data[:, 0], data[:, 2], color='green', label='G')
+        plt.plot(data[:, 0], data[:, 3], color='red', label='R')
         plt.xlabel("Pixel Value")
-        plt.ylabel("Frequency" if i == 0 else "Cumulative Frequency")
+        plt.ylabel("Frequency")
         plt.grid()
         plt.xlim(0, 255)
         plt.ylim(0, np.max(data[:, 1]) * 1.1)
@@ -35,7 +24,8 @@ def plot_histograms(csv_files, figure_title):
             np.arange(0, np.max(data[:, 1]) * 1.1, np.max(data[:, 1]) / 10))
         plt.gca().set_aspect('auto', adjustable='box')
     plt.tight_layout()
-    plt.savefig(f"{figure_title}.png", dpi=300)
+    plt.savefig(f"2D_{color_space.upper()}_Color_Histograms.png", dpi=300)
+    print(f"Saved histogram to: 2D_{color_space.upper()}_Color_Histograms.png")
     # plt.show()
 
 
@@ -50,7 +40,10 @@ def bmp2png(bmp_file):
 
 
 if __name__ == "__main__":
-    csv_files = []
-    plot_histograms(csv_files, "2D Color Histograms")
-    images = []
-    [bmp2png(img) for img in images]
+    csv_files = ["gun1_BGR_histogram.csv",
+                 "joy1_BGR_histogram.csv",
+                 "pointer1_BGR_histogram.csv"
+                 ]
+    plot_histograms(csv_files)
+    # images = []
+    # [bmp2png(img) for img in images]
