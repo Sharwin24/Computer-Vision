@@ -122,6 +122,12 @@ public:
   const int cols;
 };
 
+enum class ColorSpace {
+  BGR, // Blue, Green, Red (default for BMP)
+  HSV, // Hue, Saturation, Value
+  HSI, // Hue, Saturation, Intensity
+};
+
 class BMPImage {
 public:
   BMPImage() = delete;
@@ -718,6 +724,54 @@ public:
     return selectedPixels;
   }
 
+  void createHistogramFromFile(const std::string filename) {
+    // The file passed in is a txt file containing pixel coordinates
+    // The pixel values correspond to the pixel values in the original image
+    // that were selected by the user
+    std::ifstream file(filename);
+    if (!file.is_open()) {
+      std::cerr << "Error opening file: " << filename << std::endl;
+      return;
+    }
+    std::vector<std::pair<int, int>> selectedPixels;
+    std::string line;
+    while (std::getline(file, line)) {
+      std::istringstream iss(line);
+      int x, y;
+      if (iss >> x >> y) {
+        selectedPixels.emplace_back(y, x); // Store the selected pixel
+      }
+    }
+    file.close();
+    // Select a good color space, e.g. RGB, N-RGB, HSI, etc.
+    // Construct a 2D color histogram based on the
+    // color pixels you have collected (R-G, NR-NG, H-S)
+
+    // Images are 24-bit color so we have access to 3 channels
+    std::vector<std::vector<int>> histogram(256, std::vector<int>(3, 0)); // 3 channels (R, G, B)
+    for (const auto& pixel : selectedPixels) {
+      int r = this->pixelData2D[pixel.first][pixel.second * 3 + 2]; // Red
+      int g = this->pixelData2D[pixel.first][pixel.second * 3 + 1]; // Green
+      int b = this->pixelData2D[pixel.first][pixel.second * 3 + 0]; // Blue
+      histogram[r][0]++;
+      histogram[g][1]++;
+      histogram[b][2]++;
+    }
+    // Save the histogram to a CSV file
+    const std::string HName = this->name + "_histogram.csv";
+    std::ofstream csvFile(HName);
+    if (csvFile.is_open()) {
+      for (int i = 0; i < 256; ++i) {
+        csvFile << i << "," << histogram[i][0] << "," << histogram[i][1] << "," << histogram[i][2] << "\n";
+      }
+      csvFile.close();
+      std::cout << "Histogram saved to " << HName << std::endl;
+    } else {
+      std::cerr << "Unable to open histogram CSV file" << std::endl;
+    }
+    std::cout << "2D Color Histogram saved to " << HName << std::endl;
+  }
+
 private:
   BMPFileHeader fileHeader;
   BMPInfoHeader infoHeader;
@@ -725,6 +779,7 @@ private:
   std::vector<std::vector<uint8_t>> pixelData2D; // 2D representation of pixel data
   std::string name;
   std::vector<Component> components;
+  ColorSpace colorSpace = ColorSpace::BGR; // Default color space for BMP
 
   cv::Mat convertPixelToMat() {
     // Convert 2D Pixel Data to cv::Mat type for displaying
