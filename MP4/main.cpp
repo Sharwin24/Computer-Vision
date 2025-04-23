@@ -36,8 +36,10 @@ int main() {
       BMPImage bmp(image.c_str());
       bmp.printInfo();
       // std::vector<std::pair<int, int>> region = bmp.selectRegion();
-      // savePixels(region, bmp.getName() + "_skin_pixels.txt");
-      bmp.createHistogramFromFile(bmp.getName() + "_skin_pixels.txt", ColorSpace::BGR);
+      const std::string regionPixelsFile = bmp.getName() + "_skin_pixels.txt";
+      // savePixels(region, regionPixelsFile); // ONLY RUN THIS ONCE TO SAVE PIXELS
+      bmp.createHistogramFromFile(regionPixelsFile, ColorSpace::BGR);
+      bmp.createHistogramFromFile(regionPixelsFile, ColorSpace::HSI);
       std::cout << "==========================" << std::endl;
     }
     catch (const std::exception& e) {

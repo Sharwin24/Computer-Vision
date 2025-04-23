@@ -882,58 +882,56 @@ private:
       throw std::runtime_error("Color space conversion from " + this->colorSpaceName(this->colorSpace) +
         " to " + this->colorSpaceName(colorSpace) + " is not implemented");
     }
-    std::cout << "Converting image from " << this->colorSpaceName(this->colorSpace) <<
+    std::cout << "Converting " << this->name << " from " << this->colorSpaceName(this->colorSpace) <<
       " to " << this->colorSpaceName(colorSpace) << std::endl;
-    const int R = std::abs(this->infoHeader.height);
-    const int C = this->infoHeader.width;
+    const int numRows = std::abs(this->infoHeader.height);
+    const int numCols = this->infoHeader.width;
     switch (colorSpace) {
     case ColorSpace::BGR: {
       // No conversion needed
       break;
     }
     case ColorSpace::NBGR: {
-      for (int r = 0; r < R; r++) {
-        for (int c = 0; c < C; c++) {
+      for (int r = 0; r < numRows; r++) {
+        for (int c = 0; c < numCols; c++) {
           // Convert BGR to NBGR
-          int b = this->pixelData2D[r][c * 3 + 0]; // Blue
-          int g = this->pixelData2D[r][c * 3 + 1]; // Green
-          int r = this->pixelData2D[r][c * 3 + 2]; // Red
+          int B = this->pixelData2D[r][c * 3 + 0]; // Blue
+          int G = this->pixelData2D[r][c * 3 + 1]; // Green
+          int R = this->pixelData2D[r][c * 3 + 2]; // Red
           // Normalize RGB values
-          float sum = b + g + r + 1e-6f; // Avoid division by zero
-          this->pixelData2D[r][c * 3 + 0] = static_cast<uint8_t>((b / sum) * 255); // N-Red
-          this->pixelData2D[r][c * 3 + 1] = static_cast<uint8_t>((g / sum) * 255); // N-Green
-          this->pixelData2D[r][c * 3 + 2] = static_cast<uint8_t>((r / sum) * 255); // N-Blue
+          float sum = B + G + R + 1e-6f; // Avoid division by zero
+          this->pixelData2D[r][c * 3 + 0] = static_cast<uint8_t>((B / sum) * 255); // N-Red
+          this->pixelData2D[r][c * 3 + 1] = static_cast<uint8_t>((G / sum) * 255); // N-Green
+          this->pixelData2D[r][c * 3 + 2] = static_cast<uint8_t>((R / sum) * 255); // N-Blue
         }
       }
       break;
     }
     case ColorSpace::HSI: {
-      for (int r = 0; r < R; r++) {
-        for (int c = 0; c < C; c++) {
+      for (int r = 0; r < numRows; r++) {
+        for (int c = 0; c < numCols; c++) {
           // Convert BGR to HSI
-          const int b = this->pixelData2D[r][c * 3 + 0]; // Blue
-          const int g = this->pixelData2D[r][c * 3 + 1]; // Green
-          const int r = this->pixelData2D[r][c * 3 + 2]; // Red
+          const int B = this->pixelData2D[r][c * 3 + 0]; // Blue
+          const int G = this->pixelData2D[r][c * 3 + 1]; // Green
+          const int R = this->pixelData2D[r][c * 3 + 2]; // Red
           // --------------- BEGIN_CITATION [4] ---------------- //
           // https://www.had2know.org/technology/hsi-rgb-color-converter-equations.html
-          float numerator = r - 0.5f * (g + b);
-          float denominator = std::sqrt(r * r + g * g + b * b - r * g - r * b - g * b);
+          float numerator = R - 0.5f * (G + B);
+          float denominator = std::sqrt(R * R + G * G + B * B - R * G - R * B - G * B);
           const float EPSILON = 1e-4f; // Small value to avoid division by zero
           float theta = std::acos(numerator / (denominator + EPSILON)); // [rad]
-          float I = (r + g + b) / 3.0f; // Intensity [0, 255]
-          float S = (I == 0) ? 0 : 1 - (std::min({r, g, b}) / I); // Saturation [0, 1]
-          float H = (g >= b) ? theta : (2 * M_PI - theta); // Hue [0, pi] or [pi, 2pi]
+          float I = (R + G + B) / 3.0f; // Intensity [0, 255]
+          float S = (I == 0) ? 0 : 1 - (std::min({R, G, B}) / I); // Saturation [0, 1]
+          float H = (G >= B) ? theta : (2 * M_PI - theta); // Hue [0, pi] or [pi, 2pi]
           // Convert Hue to Degrees and normalize between [0, 180]
-          H = H * 180.0f / (2 * M_PI); // Hue [0, 180]
+          H *= 180.0f / (2 * M_PI); // Hue [0, 180]
           // Normalize Saturation to be between [0, 255]
-          S = S * 255.0f; // Saturation [0, 255]
-          std::cout << "Converted BGR [" << b << ", " << g << ", " << r << "] to HSI [" <<
-            H << ", " << S << ", " << I << "]" << std::endl;
+          S *= 255.0f; // Saturation [0, 255]
           // --------------- END_CITATION [4] ---------------- //
           // Assign the HSI values to the pixel data
-          this->pixelData2D[r][c * 3 + 0] = static_cast<uint8_t>(H); // H
-          this->pixelData2D[r][c * 3 + 1] = static_cast<uint8_t>(S); // S
-          this->pixelData2D[r][c * 3 + 2] = static_cast<uint8_t>(I); // I
+          this->pixelData2D[r][c * 3 + 0] = static_cast<uint8_t>(H);
+          this->pixelData2D[r][c * 3 + 1] = static_cast<uint8_t>(S);
+          this->pixelData2D[r][c * 3 + 2] = static_cast<uint8_t>(I);
         }
       }
       break;
