@@ -60,5 +60,9 @@ if __name__ == "__main__":
         "combined_HSI_histogram.csv"
     ]
     # plot_histograms(csv_files)
-    images = ["pointer1_HSI.bmp", "pointer1_thresholded.bmp"]
+    images = [
+        "pointer1_HSI.bmp", "pointer1_thresholded.bmp",
+        "gun1_HSI.bmp", "gun1_thresholded.bmp",
+        "joy1_HSI.bmp", "joy1_thresholded.bmp"
+    ]
     [bmp2png(img) for img in images]

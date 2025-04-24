@@ -115,11 +115,13 @@ int main() {
   }
   combineHistograms(histogramFiles);
   BMPImage testImage("pointer1.bmp");
-  testImage.printInfo();
+  BMPImage testImage2("gun1.bmp");
+  BMPImage testImage3("joy1.bmp");
   // Run test image through color detector
   // testImage.thresholdFromHistogram("combined_BGR_histogram.csv", 100);
   testImage.thresholdFromHistogram("combined_HSI_histogram.csv", 50);
-
+  testImage2.thresholdFromHistogram("combined_HSI_histogram.csv", 50);
+  testImage3.thresholdFromHistogram("combined_HSI_histogram.csv", 50);
 
   return 0;
 }
