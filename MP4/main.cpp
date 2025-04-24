@@ -82,7 +82,7 @@ int main() {
   std::vector<std::string> images;
   images.push_back("gun1.bmp");
   images.push_back("joy1.bmp");
-  images.push_back("pointer1.bmp");
+  // images.push_back("pointer1.bmp"); // Use as testing image
   std::cout << "Using OpenCV Version: " << CV_VERSION << std::endl;
   std::cout << "Processing images" << std::endl;
   for (const auto& image : images) {
@@ -112,6 +112,12 @@ int main() {
     }
   }
   combineHistograms(histogramFiles);
+  BMPImage testImage("pointer1.bmp");
+  testImage.printInfo();
+  // Run test image through color detector
+  // testImage.thresholdFromHistogram("combined_BGR_histogram.csv", 100);
+  testImage.thresholdFromHistogram("combined_HSI_histogram.csv", 25);
+
 
   return 0;
 }

@@ -787,6 +787,75 @@ public:
     }
     std::cout << "2D Color Histogram saved to " << HName << std::endl;
   }
+
+  void thresholdFromHistogram(const std::string histogramFile, const int threshold) {
+    // Given a histogram (combined histogram)
+    // Use a threshold parameter to block out pixels that don't pass
+    // Save the resulting image to a new file
+    std::ifstream file(histogramFile);
+    if (!file.is_open()) {
+      std::cerr << "Error opening file: " << histogramFile << std::endl;
+      return;
+    }
+    std::cout << "Thresholding from histogram file: " << histogramFile << std::endl;
+    // File contains: Pixel Value, Value1, Value2, Value3 (either BGR or HSI)
+    // Pixel Value: 0-255
+    std::vector<std::vector<int>> histogram(256, std::vector<int>(3, 0));
+    std::string line;
+    while (std::getline(file, line)) {
+      std::istringstream iss(line);
+      std::vector<std::string> tokens;
+      std::string token;
+      while (std::getline(iss, token, ',')) {
+        tokens.push_back(token);
+      }
+      if (tokens.size() != 4) {
+        std::cerr << "Invalid line format: " << line << std::endl;
+        continue;
+      }
+      // Parse the line
+      int index = std::stoi(tokens[0]);
+      int value1 = std::stoi(tokens[1]);
+      int value2 = std::stoi(tokens[2]);
+      int value3 = std::stoi(tokens[3]);
+      // Update the histogram
+      histogram[index][0] += value1;
+      histogram[index][1] += value2;
+      histogram[index][2] += value3;
+    }
+    file.close();
+    std::cout << "Successfully read Histogram from " << histogramFile << std::endl;
+    std::vector<std::pair<int, int>> thresholdedPixels;
+    const int numRows = std::abs(this->infoHeader.height);
+    const int numCols = this->infoHeader.width;
+    // Threshold the histogram
+    for (int r = 0; r < numRows; r++) {
+      for (int c = 0; c < numCols; c++) {
+        int value1 = this->pixelData2D[r][c * 3 + 0]; // Blue or Hue
+        int value2 = this->pixelData2D[r][c * 3 + 1]; // Green or Saturation
+        int value3 = this->pixelData2D[r][c * 3 + 2]; // Red or Intensity
+        if (histogram[value1][0] < threshold || histogram[value2][1] < threshold || histogram[value3][2] < threshold) {
+          thresholdedPixels.emplace_back(r, c);
+        }
+      }
+    }
+    std::cout << "Found " << thresholdedPixels.size() << " pixels below threshold" << std::endl;
+    // Convert Image back to BGR if needed
+    if (this->colorSpace == ColorSpace::HSI) {
+      this->setColorSpace(ColorSpace::BGR);
+    }
+    // Black out pixels that were thresholded
+    for (const auto& pixel : thresholdedPixels) {
+      this->pixelData2D[pixel.first][pixel.second * 3 + 0] = 0; // Blue
+      this->pixelData2D[pixel.first][pixel.second * 3 + 1] = 0; // Green
+      this->pixelData2D[pixel.first][pixel.second * 3 + 2] = 0; // Red
+    }
+    // Save the resulting image
+    std::string outputFilename = this->name + "_thresholded.bmp";
+    this->write(outputFilename.c_str());
+    std::cout << "Saved thresholded image to " << outputFilename << std::endl;
+  }
+
 private:
   BMPFileHeader fileHeader;
   BMPInfoHeader infoHeader;
@@ -876,18 +945,67 @@ private:
   void setColorSpace(const ColorSpace colorSpace) {
     if (colorSpace == this->colorSpace) { return; } // No change
     // Convert the pixel data to the new color space
-    if (this->colorSpace != ColorSpace::BGR) {
-      // For now, we can assume the previous color space was BGR
-      throw std::runtime_error("Color space conversion from " + this->colorSpaceName(this->colorSpace) +
-        " to " + this->colorSpaceName(colorSpace) + " is not implemented");
-    }
     std::cout << "Converting " << this->name << " from " << this->colorSpaceName(this->colorSpace) <<
       " to " << this->colorSpaceName(colorSpace) << std::endl;
     const int numRows = std::abs(this->infoHeader.height);
     const int numCols = this->infoHeader.width;
     switch (colorSpace) {
     case ColorSpace::BGR: {
-      // No conversion needed
+      // Convert HSI to BGR
+      const float RAD_60 = M_PI / 3.0f;
+      const float RAD_120 = 2.0f * M_PI / 3.0f;
+      const float RAD_180 = M_PI;
+      const float RAD_240 = 4.0f * M_PI / 3.0f;
+      const float RAD_300 = 5.0f * M_PI / 3.0f;
+      const float EPSILON = 1e-5f;
+      for (int r = 0; r < numRows; r++) {
+        for (int c = 0; c < numCols; c++) {
+          int H = this->pixelData2D[r][c * 3 + 0]; // Hue
+          int S = this->pixelData2D[r][c * 3 + 1]; // Saturation
+          int I = this->pixelData2D[r][c * 3 + 2]; // Intensity
+          // Convert Each value to their corresponding ranges
+          // Hue: [0, 255] -> [0, 360]
+          // Saturation: [0, 255] -> [0, 1]
+          // Intensity: [0, 255] -> [0, 255]
+          float Hf = static_cast<float>(H) * (360.0f / 255.0f); // Hue [0, 360]
+          float Sf = static_cast<float>(S) / 255.0f; // Saturation [0, 1]
+          float If = static_cast<float>(I); // Intensity [0, 255]
+          // Convert HSI to RGB
+          float R = If + 2 * If * Sf;
+          float G = If - If * Sf;
+          float B = If - If * Sf;
+          float HfRad = Hf * (M_PI / 180.0f); // Convert to radians
+          if (0 <= Hf && Hf < 120) {
+            R = If + If * Sf * std::cos(HfRad) / std::cos(RAD_60 - Hf);
+            G = If + If * Sf * (1 - std::cos(HfRad) / std::cos(RAD_60 - Hf));
+            B = If - If * Sf;
+          } else if (std::abs(Hf - 120.0f) < EPSILON) {
+            R = If - If * Sf;
+            G = If + 2.0f * If * Sf;
+            B = If - If * Sf;
+          } else if (120 < Hf && Hf < 240) {
+            R = If - If * Sf;
+            G = If + If * Sf * std::cos(HfRad - RAD_120) / std::cos(RAD_180 - Hf);
+            B = If + If * Sf * (1 - std::cos(HfRad - RAD_120) / std::cos(RAD_180 - Hf));
+          } else if (std::abs(Hf - 240.0f) < EPSILON) {
+            R = If - If * Sf;
+            G = If - If * Sf;
+            B = If + 2.0f * If * Sf;
+          } else if (240 < Hf && Hf < 360) {
+            R = If + If * Sf * (1 - std::cos(HfRad - RAD_240) / std::cos(RAD_300 - Hf));
+            G = If - If * Sf;
+            B = If + If * Sf * std::cos(HfRad - RAD_240) / std::cos(RAD_300 - Hf);
+          }
+          // Normalize RGB values to [0, 255]
+          R = std::min(std::max(R, 0.0f), 255.0f);
+          G = std::min(std::max(G, 0.0f), 255.0f);
+          B = std::min(std::max(B, 0.0f), 255.0f);
+          // Assign the RGB values to the pixel data
+          this->pixelData2D[r][c * 3 + 0] = static_cast<uint8_t>(B); // Blue
+          this->pixelData2D[r][c * 3 + 1] = static_cast<uint8_t>(G); // Green
+          this->pixelData2D[r][c * 3 + 2] = static_cast<uint8_t>(R); // Red
+        }
+      }
       break;
     }
     case ColorSpace::NBGR: {
@@ -907,12 +1025,18 @@ private:
       break;
     }
     case ColorSpace::HSI: {
+      // BGR -> HSI
       for (int r = 0; r < numRows; r++) {
         for (int c = 0; c < numCols; c++) {
           // Convert BGR to HSI
           const int B = this->pixelData2D[r][c * 3 + 0]; // Blue
           const int G = this->pixelData2D[r][c * 3 + 1]; // Green
           const int R = this->pixelData2D[r][c * 3 + 2]; // Red
+          // // Normalize RGB values
+          // const int sum = B + G + R;
+          // float Rn = static_cast<float>(R) / sum;
+          // float Gn = static_cast<float>(G) / sum;
+          // float Bn = static_cast<float>(B) / sum;
           // --------------- BEGIN_CITATION [4] ---------------- //
           // https://www.had2know.org/technology/hsi-rgb-color-converter-equations.html
           float numerator = R - 0.5f * (G + B);
@@ -922,8 +1046,11 @@ private:
           float I = (R + G + B) / 3.0f; // Intensity [0, 255]
           float S = (I == 0) ? 0 : 1 - (std::min({R, G, B}) / I); // Saturation [0, 1]
           float H = (G >= B) ? theta : (2 * M_PI - theta); // Hue [0, pi] or [pi, 2pi]
-          // Convert Hue to Degrees and normalize between [0, 180]
-          H *= 180.0f / (2 * M_PI); // Hue [0, 180]
+          // Convert Hue to Degrees and normalize between [0, 255]
+          H *= 180.0f / M_PI; // Hue [0, 360]
+          if (H < 0) { H += 360.0f; } // Normalize to [0, 360]
+          // Normalize Hue to be between [0, 255]
+          H = (H / 360.0f) * 255.0f; // Hue [0, 255]
           // Normalize Saturation to be between [0, 255]
           S *= 255.0f; // Saturation [0, 255]
           // --------------- END_CITATION [4] ---------------- //
@@ -938,7 +1065,7 @@ private:
     default: {
       throw std::runtime_error("Unsupported color space");
     }
-    }
+    }// END switch
     std::cout << "Converted image to " << this->colorSpaceName(colorSpace) << " color space" << std::endl;
     this->colorSpace = colorSpace; // Update the color space
   }
