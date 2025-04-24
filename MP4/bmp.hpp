@@ -14,7 +14,9 @@
  * - Pixel struct/class
  * - Doxygen for everything
  * - Store Pixel locations as a set instead of a vector
- * - Support color space conversion between different color spaces (BGR -> HSI, HSI -> BGR, etc.)
+ * - Delegate some functions to other classes in other files (Convolution, Pixel ColorSpace conversion)
+ * - Clean up the structure of commonly used data structures (less saving data structures to files!)
+ * - Add functions for common operations (reading file, 2D iteration, etc.)
  *
  * @copyright Copyright (c) 2025
  */
