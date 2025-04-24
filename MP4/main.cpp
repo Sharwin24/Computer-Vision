@@ -96,7 +96,7 @@ int main() {
       std::cout << "Processing " << image << std::endl;
       BMPImage bmp(image.c_str());
       bmp.printInfo();
-      bmp.changeColorSpace(ColorSpace::HSI);
+      // bmp.changeColorSpace(ColorSpace::HSI);
       // bmp.save(bmp.getName() + "_HSI.bmp");
       const std::string regionPixelsFile = bmp.getName() + "_skin_pixels.txt";
       // ======== ONLY RUN THIS ONCE TO SELECT PIXEL REGION WITH MOUSE ======== //
