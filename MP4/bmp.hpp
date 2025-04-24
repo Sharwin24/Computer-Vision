@@ -967,6 +967,7 @@ private:
       const float RAD_180 = M_PI;
       const float RAD_240 = 4.0f * M_PI / 3.0f;
       const float RAD_300 = 5.0f * M_PI / 3.0f;
+      const float RAD_360 = 2.0f * M_PI;
       const float EPSILON = 1e-5f;
       for (int r = 0; r < numRows; r++) {
         for (int c = 0; c < numCols; c++) {
@@ -977,34 +978,35 @@ private:
           // Hue: [0, 255] -> [0, 360]
           // Saturation: [0, 255] -> [0, 1]
           // Intensity: [0, 255] -> [0, 255]
-          float Hf = static_cast<float>(H) * (360.0f / 255.0f); // Hue [0, 360]
+          // https://blog.saikoled.com/post/44677718712/how-to-convert-from-hsi-to-rgb-white
+          float Hf = std::fmod(static_cast<float>(H), 360) * (360.0f / 255.0f); // Hue [0, 360]
           float Sf = static_cast<float>(S) / 255.0f; // Saturation [0, 1]
           float If = static_cast<float>(I); // Intensity [0, 255]
+          Hf *= (M_PI / 180.0f); // Convert to radians
           // Convert HSI to RGB
           float R = If + 2 * If * Sf;
           float G = If - If * Sf;
           float B = If - If * Sf;
-          float HfRad = Hf * (M_PI / 180.0f); // Convert to radians
-          if (0 <= Hf && Hf < 120) {
-            R = If + If * Sf * std::cos(HfRad) / std::cos(RAD_60 - Hf);
-            G = If + If * Sf * (1 - std::cos(HfRad) / std::cos(RAD_60 - Hf));
+          if (Hf < RAD_120) {
+            R = If + If * Sf * std::cos(Hf) / std::cos(RAD_60 - Hf);
+            G = If + If * Sf * (1 - std::cos(Hf) / std::cos(RAD_60 - Hf));
             B = If - If * Sf;
-          } else if (std::abs(Hf - 120.0f) < EPSILON) {
+          } else if (std::abs(Hf - RAD_120) < EPSILON) {
             R = If - If * Sf;
             G = If + 2.0f * If * Sf;
             B = If - If * Sf;
-          } else if (120 < Hf && Hf < 240) {
+          } else if (RAD_120 < Hf && Hf < RAD_240) {
             R = If - If * Sf;
-            G = If + If * Sf * std::cos(HfRad - RAD_120) / std::cos(RAD_180 - Hf);
-            B = If + If * Sf * (1 - std::cos(HfRad - RAD_120) / std::cos(RAD_180 - Hf));
-          } else if (std::abs(Hf - 240.0f) < EPSILON) {
+            G = If + If * Sf * std::cos(Hf - RAD_120) / std::cos(RAD_180 - Hf);
+            B = If + If * Sf * (1 - std::cos(Hf - RAD_120) / std::cos(RAD_180 - Hf));
+          } else if (std::abs(Hf - RAD_240) < EPSILON) {
             R = If - If * Sf;
             G = If - If * Sf;
             B = If + 2.0f * If * Sf;
-          } else if (240 < Hf && Hf < 360) {
-            R = If + If * Sf * (1 - std::cos(HfRad - RAD_240) / std::cos(RAD_300 - Hf));
+          } else if (RAD_240 < Hf && Hf < RAD_360) {
+            R = If + If * Sf * (1 - std::cos(Hf - RAD_240) / std::cos(RAD_300 - Hf));
             G = If - If * Sf;
-            B = If + If * Sf * std::cos(HfRad - RAD_240) / std::cos(RAD_300 - Hf);
+            B = If + If * Sf * std::cos(Hf - RAD_240) / std::cos(RAD_300 - Hf);
           }
           // Normalize RGB values to [0, 255]
           R = std::min(std::max(R, 0.0f), 255.0f);
@@ -1048,7 +1050,7 @@ private:
           // float Gn = static_cast<float>(G) / sum;
           // float Bn = static_cast<float>(B) / sum;
           // --------------- BEGIN_CITATION [4] ---------------- //
-          // https://www.had2know.org/technology/hsi-rgb-color-converter-equations.html
+          // https://answers.opencv.org/question/62446/conversion-from-rgb-to-hsi/
           float numerator = R - 0.5f * ((R - G) + (R - B));
           float denominator = std::sqrt(((R - G) * (R - G)) + ((R - B) * (G - B)));
           const float EPSILON = 1e-6f; // Small value to avoid division by zero
