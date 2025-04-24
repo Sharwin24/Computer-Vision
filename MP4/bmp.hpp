@@ -154,8 +154,11 @@ public:
 
   ~BMPImage() = default;
 
-  void save(const char* filename) {
-    this->write(filename);
+  void save(const std::string filename) {
+    if (this->colorSpace == ColorSpace::HSI) {
+      this->setColorSpace(ColorSpace::BGR);
+    }
+    this->write(filename.c_str());
   }
 
   void printInfo() const {
@@ -168,6 +171,7 @@ public:
     std::cout << "Bit Count: " << this->infoHeader.bit_count << std::endl;
     std::cout << "Compression: " << this->infoHeader.compression << std::endl;
     std::cout << "Colors Used: " << this->infoHeader.colors_used << std::endl;
+    std::cout << "Color Space: " << this->colorSpaceName(this->colorSpace) << std::endl;
   }
 
   void printPixelData() const {
@@ -800,6 +804,7 @@ public:
     std::cout << "Thresholding from histogram file: " << histogramFile << std::endl;
     // File contains: Pixel Value, Value1, Value2, Value3 (either BGR or HSI)
     // Pixel Value: 0-255
+    const std::string colorSpace = histogramFile.substr(histogramFile.find("_") + 1, histogramFile.find("_histogram.csv") - histogramFile.find("_") - 1);
     std::vector<std::vector<int>> histogram(256, std::vector<int>(3, 0));
     std::string line;
     while (std::getline(file, line)) {
@@ -818,7 +823,7 @@ public:
       int value1 = std::stoi(tokens[1]);
       int value2 = std::stoi(tokens[2]);
       int value3 = std::stoi(tokens[3]);
-      // Update the histogram
+      // Create the histogram
       histogram[index][0] += value1;
       histogram[index][1] += value2;
       histogram[index][2] += value3;
@@ -826,6 +831,8 @@ public:
     file.close();
     std::cout << "Successfully read Histogram from " << histogramFile << std::endl;
     std::vector<std::pair<int, int>> thresholdedPixels;
+    // Convert the pixel data to the color space of the histogram
+    this->setColorSpace(colorSpace == "BGR" ? ColorSpace::BGR : ColorSpace::HSI);
     const int numRows = std::abs(this->infoHeader.height);
     const int numCols = this->infoHeader.width;
     // Threshold the histogram
@@ -839,7 +846,7 @@ public:
         }
       }
     }
-    std::cout << "Found " << thresholdedPixels.size() << " pixels below threshold" << std::endl;
+    std::cout << "Found " << thresholdedPixels.size() << " pixels below threshold of " << threshold << std::endl;
     // Convert Image back to BGR if needed
     if (this->colorSpace == ColorSpace::HSI) {
       this->setColorSpace(ColorSpace::BGR);
@@ -853,7 +860,10 @@ public:
     // Save the resulting image
     std::string outputFilename = this->name + "_thresholded.bmp";
     this->write(outputFilename.c_str());
-    std::cout << "Saved thresholded image to " << outputFilename << std::endl;
+  }
+
+  void changeColorSpace(const ColorSpace CS) {
+    this->setColorSpace(CS);
   }
 
 private:
@@ -1039,18 +1049,17 @@ private:
           // float Bn = static_cast<float>(B) / sum;
           // --------------- BEGIN_CITATION [4] ---------------- //
           // https://www.had2know.org/technology/hsi-rgb-color-converter-equations.html
-          float numerator = R - 0.5f * (G + B);
-          float denominator = std::sqrt(R * R + G * G + B * B - R * G - R * B - G * B);
-          const float EPSILON = 1e-4f; // Small value to avoid division by zero
+          float numerator = R - 0.5f * ((R - G) + (R - B));
+          float denominator = std::sqrt(((R - G) * (R - G)) + ((R - B) * (G - B)));
+          const float EPSILON = 1e-6f; // Small value to avoid division by zero
           float theta = std::acos(numerator / (denominator + EPSILON)); // [rad]
           float I = (R + G + B) / 3.0f; // Intensity [0, 255]
-          float S = (I == 0) ? 0 : 1 - (std::min({R, G, B}) / I); // Saturation [0, 1]
-          float H = (G >= B) ? theta : (2 * M_PI - theta); // Hue [0, pi] or [pi, 2pi]
-          // Convert Hue to Degrees and normalize between [0, 255]
-          H *= 180.0f / M_PI; // Hue [0, 360]
-          if (H < 0) { H += 360.0f; } // Normalize to [0, 360]
+          float S = (I == 0) ? 0.0f : 1.0f - 3.0f * (std::min({R, G, B}) / (R + G + B + EPSILON)); // Saturation [0, 1]
+          float H = (G >= B) ? theta : ((2.0f * M_PI) - theta); // Hue [0, pi] or [pi, 2pi]
+          // Convert Hue to Degrees
+          H *= (180.0f / M_PI); // Hue [0, 360]
           // Normalize Hue to be between [0, 255]
-          H = (H / 360.0f) * 255.0f; // Hue [0, 255]
+          H *= (255.0f / 360.0f); // Hue [0, 255]
           // Normalize Saturation to be between [0, 255]
           S *= 255.0f; // Saturation [0, 255]
           // --------------- END_CITATION [4] ---------------- //
