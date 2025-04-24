@@ -978,7 +978,6 @@ private:
           // Hue: [0, 255] -> [0, 360]
           // Saturation: [0, 255] -> [0, 1]
           // Intensity: [0, 255] -> [0, 255]
-          // https://blog.saikoled.com/post/44677718712/how-to-convert-from-hsi-to-rgb-white
           float Hf = std::fmod(static_cast<float>(H), 360) * (360.0f / 255.0f); // Hue [0, 360]
           float Sf = static_cast<float>(S) / 255.0f; // Saturation [0, 1]
           float If = static_cast<float>(I); // Intensity [0, 255]
@@ -991,24 +990,16 @@ private:
             R = If + If * Sf * std::cos(Hf) / std::cos(RAD_60 - Hf);
             G = If + If * Sf * (1 - std::cos(Hf) / std::cos(RAD_60 - Hf));
             B = If - If * Sf;
-          } else if (std::abs(Hf - RAD_120) < EPSILON) {
-            R = If - If * Sf;
-            G = If + 2.0f * If * Sf;
-            B = If - If * Sf;
           } else if (RAD_120 < Hf && Hf < RAD_240) {
             R = If - If * Sf;
             G = If + If * Sf * std::cos(Hf - RAD_120) / std::cos(RAD_180 - Hf);
             B = If + If * Sf * (1 - std::cos(Hf - RAD_120) / std::cos(RAD_180 - Hf));
-          } else if (std::abs(Hf - RAD_240) < EPSILON) {
-            R = If - If * Sf;
-            G = If - If * Sf;
-            B = If + 2.0f * If * Sf;
           } else if (RAD_240 < Hf && Hf < RAD_360) {
             R = If + If * Sf * (1 - std::cos(Hf - RAD_240) / std::cos(RAD_300 - Hf));
             G = If - If * Sf;
             B = If + If * Sf * std::cos(Hf - RAD_240) / std::cos(RAD_300 - Hf);
           }
-          // Normalize RGB values to [0, 255]
+          // Clamp RGB values to [0, 255]
           R = std::min(std::max(R, 0.0f), 255.0f);
           G = std::min(std::max(G, 0.0f), 255.0f);
           B = std::min(std::max(B, 0.0f), 255.0f);
@@ -1055,8 +1046,9 @@ private:
           float denominator = std::sqrt(((R - G) * (R - G)) + ((R - B) * (G - B)));
           const float EPSILON = 1e-6f; // Small value to avoid division by zero
           float theta = std::acos(numerator / (denominator + EPSILON)); // [rad]
-          float I = (R + G + B) / 3.0f; // Intensity [0, 255]
-          float S = (I == 0) ? 0.0f : 1.0f - 3.0f * (std::min({R, G, B}) / (R + G + B + EPSILON)); // Saturation [0, 1]
+          const int sum = B + G + R;
+          float I = sum / 3.0f; // Intensity [0, 255]
+          float S = (I == 0) ? 0.0f : 1.0f - 3.0f * (std::min({R, G, B}) / (sum + EPSILON)); // Saturation [0, 1]
           float H = (G >= B) ? theta : ((2.0f * M_PI) - theta); // Hue [0, pi] or [pi, 2pi]
           // Convert Hue to Degrees
           H *= (180.0f / M_PI); // Hue [0, 360]
