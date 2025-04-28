@@ -1091,17 +1091,33 @@ public:
     this->colorSpace = colorSpace; // Update the color space
   }
 
-  std::vector<std::vector<uint8_t>> gaussianSmoothing(const unsigned int kernelSize = 5, const float sigma = 1.0f) {
+  std::vector<std::vector<uint8_t>> gaussianSmoothing(const float sigma = 1.0f) {
     // Use a Gaussian filter to smooth the grayscale image.
     // First convert the image to grayscale
     std::vector<std::vector<uint8_t>> grayscaleImage = this->convertToGrayscaleImage();
     // Apply Gaussian smoothing using a kernel
-    StructuringElement kernel(kernelSize);
+    StructuringElement kernel(5);
     kernel.initGaussianKernel(sigma);
     std::vector<std::vector<uint8_t>> smoothedImage = this->convolution(grayscaleImage, kernel);
     // Return the smoothed image
     return smoothedImage;
   }
+
+  void cannyEdgeDetector(float sigma, float percentNonEdge, std::string suppressionMethod, std::string gradientMethod) {
+    auto smoothed = this->gaussianSmoothing(sigma);
+    auto grad = this->imageGradient(smoothed, gradientMethod);
+    auto suppressed = this->nonMaximaSuppression(grad, suppressionMethod);
+    auto edgeMap = this->hysteresisThresholding(grad, percentNonEdge);
+  }
+
+private:
+  BMPFileHeader fileHeader;
+  BMPInfoHeader infoHeader;
+  BMPColorHeader colorHeader;
+  std::vector<std::vector<uint8_t>> pixelData2D; // 2D representation of pixel data
+  std::string name;
+  std::vector<Component> components;
+  ColorSpace colorSpace = ColorSpace::BGR; // Default color space for BMP
 
   std::vector<std::vector<ImageGradient>> imageGradient(const std::vector<std::vector<uint8_t>>& image, std::string kernel = "Sobel") {
     // Compute image gradient on the given image
@@ -1197,6 +1213,32 @@ public:
     edgeMap = this->edgeLinking(strong, weak);
   }
 
+  std::vector<std::vector<bool>> edgeLinking(
+    const std::vector<std::vector<bool>>& strong,
+    const std::vector<std::vector<bool>>& weak) {
+    std::vector<std::vector<bool>> linkedEdges = strong;
+    // Link strong and weak edges
+    const int numRows = strong.size();
+    const int numCols = strong[0].size();
+    for (int r = 1; r < numRows - 1; r++) {
+      for (int c = 1; c < numCols - 1; c++) {
+        if (strong[r][c]) {
+          // Check 8-connected neighbors
+          for (int i = -1; i <= 1; i++) {
+            for (int j = -1; j <= 1; j++) {
+              if (i < 0 || j < 0 || i > numRows - 1 || j > numCols - 1) {
+                continue; // Skip out of bounds
+              } else if (weak[r + i][c + j] && !linkedEdges[r + i][c + j]) {
+                linkedEdges[r + i][c + j] = true; // Link weak edge to strong edge
+              }
+            }
+          }
+        }
+      }
+    }
+    return linkedEdges;
+  }
+
   std::vector<std::vector<float>> nonMaximaSuppression(
     const std::vector<std::vector<ImageGradient>>& imageGradient,
     std::string method = "interpolation") {
@@ -1265,41 +1307,6 @@ public:
     }
     return suppressed;
   }
-
-  std::vector<std::vector<bool>> edgeLinking(
-    const std::vector<std::vector<bool>>& strong,
-    const std::vector<std::vector<bool>>& weak) {
-    std::vector<std::vector<bool>> linkedEdges = strong;
-    // Link strong and weak edges
-    const int numRows = strong.size();
-    const int numCols = strong[0].size();
-    for (int r = 1; r < numRows - 1; r++) {
-      for (int c = 1; c < numCols - 1; c++) {
-        if (strong[r][c]) {
-          // Check 8-connected neighbors
-          for (int i = -1; i <= 1; i++) {
-            for (int j = -1; j <= 1; j++) {
-              if (i < 0 || j < 0 || i > numRows - 1 || j > numCols - 1) {
-                continue; // Skip out of bounds
-              } else if (weak[r + i][c + j] && !linkedEdges[r + i][c + j]) {
-                linkedEdges[r + i][c + j] = true; // Link weak edge to strong edge
-              }
-            }
-          }
-        }
-      }
-    }
-    return linkedEdges;
-  }
-
-private:
-  BMPFileHeader fileHeader;
-  BMPInfoHeader infoHeader;
-  BMPColorHeader colorHeader;
-  std::vector<std::vector<uint8_t>> pixelData2D; // 2D representation of pixel data
-  std::string name;
-  std::vector<Component> components;
-  ColorSpace colorSpace = ColorSpace::BGR; // Default color space for BMP
 
   float bilinearInterpolation(const std::vector<std::vector<ImageGradient>>& imageGradient,
     const float y, const float x) {

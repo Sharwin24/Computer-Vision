@@ -97,9 +97,12 @@ int main() {
       std::cout << "Processing " << image << std::endl;
       BMPImage bmp(image.c_str());
       bmp.printInfo();
-      auto smoothed = bmp.gaussianSmoothing(5, 1.0f);
-      auto grad = bmp.imageGradient(smoothed, "Sobel"); // "RobertCross"
-      auto edgeMap = bmp.hysteresisThresholding(grad, 0.8f);
+      bmp.cannyEdgeDetector(
+        1.0f, // Sigma
+        0.8f, // PercentNonEdge
+        "interpolation", // NonMaxima Suppression Method [interpolation, quantized]
+        "Sobel" // Gradient Method [Sobel, RobertCross]
+      );
       bmp.save(bmp.getName() + "_edges.bmp");
       std::cout << "==========================" << std::endl;
     }
