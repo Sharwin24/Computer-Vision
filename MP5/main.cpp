@@ -97,6 +97,10 @@ int main() {
       std::cout << "Processing " << image << std::endl;
       BMPImage bmp(image.c_str());
       bmp.printInfo();
+      auto smoothed = bmp.gaussianSmoothing(5, 1.0f);
+      auto grad = bmp.imageGradient(smoothed, "Sobel"); // "RobertCross"
+      auto edgeMap = bmp.hysteresisThresholding(grad, 0.8f);
+      bmp.save(bmp.getName() + "_edges.bmp");
       std::cout << "==========================" << std::endl;
     }
     catch (const std::exception& e) {

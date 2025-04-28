@@ -106,7 +106,7 @@ public:
    * @param value the initial value for the kernel elements. Defaults to 1.
    */
   StructuringElement(int size, float value = 1.0f) : kernelSize(size) {
-    this->kernel.resize(size, std::vector<float>(size, 1.0f));
+    this->kernel.resize(size, std::vector<float>(size, value));
   }
 
   StructuringElement(const StructuringElement& original) : kernelSize(original.kernelSize) {
@@ -1103,7 +1103,7 @@ public:
     return smoothedImage;
   }
 
-  void imageGradient(const std::vector<std::vector<uint8_t>>& image, std::string kernel = "Sobel") {
+  std::vector<std::vector<ImageGradient>> imageGradient(const std::vector<std::vector<uint8_t>>& image, std::string kernel = "Sobel") {
     // Compute image gradient on the given image
     StructuringElement GX(2);
     StructuringElement GY(2);
@@ -1142,24 +1142,155 @@ public:
           imageGradient[r][c].magnitude = std::sqrt(gx * gx + gy * gy);
           imageGradient[r][c].direction = std::atan2(gy, gx); // [rad]
           gradMax = std::max(gradMax, imageGradient[r][c].magnitude);
-        } 
+        }
       }
     }
 
-    // Normalize Gradient between [0, 255]
+    // Normalize Gradient
     for (int r = 0; r < numRows; r++) {
       for (int c = 0; c < numCols; c++) {
-        imageGradient[r][c].magnitude /= gradMax;
+        imageGradient[r][c].magnitude /= gradMax; // [0, 1]
         imageGradient[r][c].magnitude *= 255.0f; // [0, 255]
       }
     }
+
+    return imageGradient;
   }
 
-  void findThresholds();
+  std::vector<std::vector<bool>> hysteresisThresholding(
+    const std::vector<std::vector<ImageGradient>>& imageGradient, float percentNonEdge) {
+    // Find the threshold values for edge linking
+    // Calculate high threshold and low will be extrapolated as 0.5 * highThreshold
+    // percentNonEdge is the specified percentage of Non-edge area in magnitudes
+    const int numRows = imageGradient.size();
+    const int numCols = imageGradient[0].size();
+    std::vector<float> magnitudes;
+    magnitudes.reserve(numRows * numCols);
+    for (const auto& row : imageGradient) {
+      for (const auto& pixel : row) {
+        magnitudes.push_back(pixel.magnitude);
+      }
+    }
+    // Sort the magnitudes in descending order
+    std::sort(magnitudes.begin(), magnitudes.end(), std::greater<float>());
+    const int numPixels = magnitudes.size();
+    const int highThresholdIndex = static_cast<int>(numPixels * (1.0f - percentNonEdge));
+    const float highThreshold = magnitudes[std::min(highThresholdIndex, numPixels - 1)];
+    const float lowThreshold = highThreshold * 0.5f;
+    // Compute thresholds
+    std::cout << "High Threshold: " << highThreshold << std::endl;
+    std::cout << "Low Threshold: " << lowThreshold << std::endl;
+    // Build strong and weak edge maps
+    std::vector<std::vector<bool>> strong(numRows, std::vector<bool>(numCols, false));
+    std::vector<std::vector<bool>> weak(numRows, std::vector<bool>(numCols, false));
+    for (int r = 0; r < numRows; r++) {
+      for (int c = 0; c < numCols; c++) {
+        if (imageGradient[r][c].magnitude >= highThreshold) {
+          strong[r][c] = true; // Strong edge
+        } else if (imageGradient[r][c].magnitude >= lowThreshold) {
+          weak[r][c] = true; // Weak edge
+        }
+      }
+    }
+    // Trace edges to create final edge map
+    std::vector<std::vector<bool>> edgeMap(numRows, std::vector<bool>(numCols, false));
+    edgeMap = this->edgeLinking(strong, weak);
+  }
 
-  void nonMaximaSuppression();
+  std::vector<std::vector<float>> nonMaximaSuppression(
+    const std::vector<std::vector<ImageGradient>>& imageGradient,
+    std::string method = "interpolation") {
+    const int numRows = imageGradient.size();
+    const int numCols = imageGradient[0].size();
+    std::vector<std::vector<float>> suppressed(numRows, std::vector<float>(numCols, 0.0f));
+    for (int r = 1; r < numRows - 1; r++) {
+      for (int c = 1; c < numCols - 1; c++) {
+        // Get the gradient direction and magnitude
+        float magnitude = imageGradient[r][c].magnitude;
+        if (magnitude < 1e-6f) { continue; } // Skip if magnitude is too small
+        float direction = imageGradient[r][c].direction;
+        // Normalize direction between [0, pi]
+        while (direction < 0) { direction += M_PI; }
+        while (direction > M_PI) { direction -= M_PI; }
+        if (method == "interpolation") {
+          // Calculate unit vector in the direction of the gradient
+          float x = std::cos(direction);
+          float y = std::sin(direction);
+          float x1 = static_cast<float>(c) + x;
+          float y1 = static_cast<float>(r) + y;
+          float x2 = static_cast<float>(c) - x;
+          float y2 = static_cast<float>(r) - y;
+          float mag1 = this->bilinearInterpolation(imageGradient, y1, x1);
+          float mag2 = this->bilinearInterpolation(imageGradient, y2, x2);
+          if (magnitude >= mag1 && magnitude >= mag2) {
+            suppressed[r][c] = magnitude; // Keep the pixel
+          }
+        } else if (method == "quantized") {
+          // Quantized directions: 0 = 0, 1 = 45, 2 = 90, 3 = 135 degrees
+          int quantizedDirection = static_cast<int>(std::round(direction / (M_PI / 4))) % 4;
+          // Get neighbors based on quantized direction
+          int nx1, ny1, nx2, ny2;
+          switch (quantizedDirection) {
+          case 0: { // 0 degrees
+            nx1 = c + 1; ny1 = r; // Right
+            nx2 = c - 1; ny2 = r; // Left
+            break;
+          }
+          case 1: { // 45 degrees
+            nx1 = c + 1; ny1 = r - 1; // Top-right
+            nx2 = c - 1; ny2 = r + 1; // Bottom-left
+            break;
+          }
+          case 2: { // 90 degrees
+            nx1 = c; ny1 = r - 1; // Top
+            nx2 = c; ny2 = r + 1; // Bottom
+            break;
+          }
+          case 3: { // 135 degrees
+            nx1 = c - 1; ny1 = r - 1; // Top-left
+            nx2 = c + 1; ny2 = r + 1; // Bottom-right
+            break;
+          }
+          }
+          // Compare magnitudes
+          float mag1 = imageGradient[ny1][nx1].magnitude;
+          float mag2 = imageGradient[ny2][nx2].magnitude;
+          if (magnitude >= mag1 && magnitude >= mag2) {
+            suppressed[r][c] = magnitude; // Keep the pixel
+          }
+        } else {
+          throw std::runtime_error("Unsupported non-maxima suppression method: " + method);
+        }
+      }
+    }
+    return suppressed;
+  }
 
-  void edgeLinking();
+  std::vector<std::vector<bool>> edgeLinking(
+    const std::vector<std::vector<bool>>& strong,
+    const std::vector<std::vector<bool>>& weak) {
+    std::vector<std::vector<bool>> linkedEdges = strong;
+    // Link strong and weak edges
+    const int numRows = strong.size();
+    const int numCols = strong[0].size();
+    for (int r = 1; r < numRows - 1; r++) {
+      for (int c = 1; c < numCols - 1; c++) {
+        if (strong[r][c]) {
+          // Check 8-connected neighbors
+          for (int i = -1; i <= 1; i++) {
+            for (int j = -1; j <= 1; j++) {
+              if (i < 0 || j < 0 || i > numRows - 1 || j > numCols - 1) {
+                continue; // Skip out of bounds
+              } else if (weak[r + i][c + j] && !linkedEdges[r + i][c + j]) {
+                linkedEdges[r + i][c + j] = true; // Link weak edge to strong edge
+              }
+            }
+          }
+        }
+      }
+    }
+    return linkedEdges;
+  }
 
 private:
   BMPFileHeader fileHeader;
@@ -1169,6 +1300,42 @@ private:
   std::string name;
   std::vector<Component> components;
   ColorSpace colorSpace = ColorSpace::BGR; // Default color space for BMP
+
+  float bilinearInterpolation(const std::vector<std::vector<ImageGradient>>& imageGradient,
+    const float y, const float x) {
+    // Verify bounds
+    const int numRows = imageGradient.size();
+    const int numCols = imageGradient[0].size();
+    // Out of bounds returns 0
+    if (y < 0 || y >= numRows || x < 0 || x >= numCols) { return 0.0f; }
+    // Get 4 neighbors
+    int xFloor = static_cast<int>(std::floor(x));
+    int yFloor = static_cast<int>(std::floor(y));
+    int xCeil = static_cast<int>(std::ceil(x));
+    int yCeil = static_cast<int>(std::ceil(y));
+    // Interpolation weights
+    float wx = x - xFloor;
+    float wy = y - yFloor;
+    // Collect magnitudes
+    float mag11 = imageGradient[yFloor][xFloor].magnitude; // Top-left
+    float mag12 = imageGradient[yFloor][xCeil].magnitude; // Top-right
+    float mag21 = imageGradient[yCeil][xFloor].magnitude; // Bottom-left
+    float mag22 = imageGradient[yCeil][xCeil].magnitude; // Bottom-right
+    // --------------- BEGIN_CITATION [5] ---------------- //
+    // Bilinear interpolation
+    // https://arm-software.github.io/CMSIS-DSP/v1.10.1/group__BilinearInterpolate.html
+    // f(x, y) = f(XF, YF) * (1 - (x - XF)) * (1 - (y - YF))
+    //   + f(XF + 1, YF) * (x - XF) * (1 - (y - YF))
+    //   + f(XF, YF + 1) * (1 - (x - XF)) * (y - YF)
+    //   + f(XF + 1, YF + 1) * (x - XF) * (y - YF)
+    float interpolatedValue = mag11 * (1 - wx) * (1 - wy) +
+      mag12 * wx * (1 - wy) +
+      mag21 * (1 - wx) * wy +
+      mag22 * wx * wy;
+    // --------------- END_CITATION [5] ---------------- //
+    // Normalize the interpolated value to [0, 255]
+    return std::clamp(interpolatedValue, 0.0f, 255.0f);
+  }
 
   cv::Mat convertPixelToMat() {
     // Convert 2D Pixel Data to cv::Mat type for displaying
