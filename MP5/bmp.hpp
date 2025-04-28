@@ -96,31 +96,43 @@ struct Component {
  */
 class StructuringElement {
 public:
+
   StructuringElement() = delete;
 
   /**
-   * @brief Create a SE Kernel with the given size. Kernel values all default to 1.
+   * @brief Create a square SE Kernel with the given size. Kernel values all default to 1.
    *
-   * @param r the number of rows in the kernel
-   * @param c the number of columns in the kernel
+   * @param size the number of rows and columns in the kernel
+   * @param value the initial value for the kernel elements. Defaults to 1.
    */
-  StructuringElement(int r, int c) : rows(r), cols(c) {
-    this->element.resize(r, std::vector<float>(c, 1.0f));
+  StructuringElement(int size, float value = 1.0f) : kernelSize(size) {
+    this->kernel.resize(size, std::vector<float>(size, 1.0f));
   }
 
-  void setElement(int r, int c, uint8_t value) {
-    if (r >= 0 && r < this->rows && c >= 0 && c < this->cols) {
-      this->element[r][c] = value;
+  StructuringElement(const StructuringElement& original) : kernelSize(original.kernelSize) {
+    this->kernel.resize(original.kernelSize, std::vector<float>(original.kernelSize, 0.0f));
+    for (int i = 0; i < original.kernelSize; ++i) {
+      for (int j = 0; j < original.kernelSize; ++j) {
+        this->kernel[i][j] = original.kernel[i][j];
+      }
+    }
+  }
+
+  int getKernelSize() const { return this->kernelSize; }
+
+  void setElement(int r, int c, float value) {
+    if (r >= 0 && r < this->kernelSize && c >= 0 && c < this->kernelSize) {
+      this->kernel[r][c] = value;
     }
   }
 
   float operator()(int r, int c) const {
-    if (r >= 0 && r < this->rows && c >= 0 && c < this->cols) {
-      return this->element[r][c];
+    if (r >= 0 && r < this->kernelSize && c >= 0 && c < this->kernelSize) {
+      return this->kernel[r][c];
     } else {
       throw std::out_of_range("Kernel Index (" + std::to_string(r) + "," +
         std::to_string(c) + ") out of range for kernel size: " +
-        std::to_string(this->rows) + "x" + std::to_string(this->cols)
+        std::to_string(this->kernelSize) + "x" + std::to_string(this->kernelSize)
       );
     }
   }
@@ -128,27 +140,72 @@ public:
   void initGaussianKernel(const float sigma) {
     // Create a Gaussian kernel with the given sigma
     // G(x,y) = (1/(2*π*σ²)) * e^(-(x²+y²)/(2*σ²))
-    int ksize = this->rows;
+    int ksize = this->kernelSize;
     float sum = 0.0f;
     int halfSize = ksize / 2;
     for (int x = -halfSize; x <= halfSize; ++x) {
       for (int y = -halfSize; y <= halfSize; ++y) {
         float value = std::exp(-(x * x + y * y) / (2 * sigma * sigma));
-        this->element[x + halfSize][y + halfSize] = static_cast<float>(value);
+        this->kernel[x + halfSize][y + halfSize] = value;
         sum += value;
       }
     }
     // Normalize the kernel
     for (int i = 0; i < ksize; ++i) {
       for (int j = 0; j < ksize; ++j) {
-        this->element[i][j] /= sum;
+        this->kernel[i][j] /= sum;
       }
     }
   }
 
-  std::vector<std::vector<float>> element;
-  const int rows;
-  const int cols;
+  void initRobertCrossKernel(bool Gx) {
+    this->kernel.clear();
+    this->kernelSize = 2;
+    this->kernel.resize(2, std::vector<float>(2, 0.0f));
+    if (Gx) {
+      this->kernel[0][0] = 1.0f; this->kernel[0][1] = 0.0f;
+      this->kernel[1][0] = 0.0f; this->kernel[1][1] = -1.0f;
+    } else {
+      this->kernel[0][0] = 0.0f; this->kernel[0][1] = 1.0f;
+      this->kernel[1][0] = -1.0f; this->kernel[1][1] = 0.0f;
+    }
+  }
+
+  void initSobelKernel(bool Gx) {
+    this->kernel.clear();
+    this->kernelSize = 3;
+    this->kernel.resize(3, std::vector<float>(3, 0.0f));
+    if (Gx) {
+      // Left column
+      this->kernel[0][0] = -1.0f;
+      this->kernel[1][0] = -2.0f;
+      this->kernel[2][0] = -1.0f;
+      // Middle Column is all zeros
+      // Right column
+      this->kernel[0][2] = 1.0f;
+      this->kernel[1][2] = 2.0f;
+      this->kernel[2][2] = 1.0f;
+    } else {
+      // Top Row
+      this->kernel[0][0] = -1.0f;
+      this->kernel[0][1] = -2.0f;
+      this->kernel[0][2] = -1.0f;
+      // Middle Row is all zeros
+      // Bottom column
+      this->kernel[2][0] = 1.0f;
+      this->kernel[2][1] = 2.0f;
+      this->kernel[2][2] = 1.0f;
+    }
+  }
+
+private:
+  std::vector<std::vector<float>> kernel;
+  int kernelSize;
+};
+
+struct ImageGradient {
+  float magnitude;
+  float direction; // [rad]
 };
 
 enum class ColorSpace {
@@ -470,23 +527,21 @@ public:
     // Convolve the image with the kernel
     const int R = image.size();
     const int C = image[0].size();
-    const int kR = kernel.rows;
-    const int kC = kernel.cols;
-    const int kRhalf = kR / 2;
-    const int kChalf = kC / 2;
+    const int K = kernel.getKernelSize();
+    const int KHalf = K / 2;
     std::vector<std::vector<uint8_t>> convolvedImage(R, std::vector<uint8_t>(C, 0));
     for (int r = 0; r < R; r++) {
       for (int c = 0; c < C; c++) {
         float sum = 0.0f;
         // Apply kernel to pixel location
-        for (int kr = -kRhalf; kr <= kRhalf; kr++) {
-          for (int kc = -kChalf; kc <= kChalf; kc++) {
+        for (int kr = -KHalf; kr <= KHalf; kr++) {
+          for (int kc = -KHalf; kc <= KHalf; kc++) {
             // Skip if kernel value is 0
-            if (kernel(kr + kRhalf, kc + kChalf) == 0) { continue; }
+            if (kernel(kr + KHalf, kc + KHalf) == 0) { continue; }
             int imageR = r + kr;
             int imageC = c + kc;
             if (imageR >= 0 && imageR < R && imageC >= 0 && imageC < C) {
-              sum += static_cast<float>(image[imageR][imageC]) * kernel(kr + kRhalf, kc + kChalf);
+              sum += static_cast<float>(image[imageR][imageC]) * kernel(kr + KHalf, kc + KHalf);
             }
           }
         }
@@ -509,10 +564,10 @@ public:
       for (int c = 0; c < C; c++) {
         uint8_t minValue = this->infoHeader.bit_count == 1 ? 1 : 255;
         // Apply kernel to pixel location
-        for (int kr = -kernel.rows / 2; kr <= kernel.rows / 2; kr++) {
-          for (int kc = -kernel.cols / 2; kc <= kernel.cols / 2; kc++) {
+        for (int kr = -kernel.getKernelSize() / 2; kr <= kernel.getKernelSize() / 2; kr++) {
+          for (int kc = -kernel.getKernelSize() / 2; kc <= kernel.getKernelSize() / 2; kc++) {
             // Skip if kernel value is 0
-            if (kernel(kr + kernel.rows / 2, kc + kernel.cols / 2) == 0) { continue; }
+            if (kernel(kr + kernel.getKernelSize() / 2, kc + kernel.getKernelSize() / 2) == 0) { continue; }
             int imageR = r + kr;
             int imageC = c + kc;
             if (imageR >= 0 && imageR < R && imageC >= 0 && imageC < C) {
@@ -544,10 +599,10 @@ public:
       for (int c = 0; c < C; c++) {
         uint8_t maxValue = 0;
         // Apply kernel to pixel location
-        for (int kr = -kernel.rows / 2; kr <= kernel.rows / 2; kr++) {
-          for (int kc = -kernel.cols / 2; kc <= kernel.cols / 2; kc++) {
+        for (int kr = -kernel.getKernelSize() / 2; kr <= kernel.getKernelSize() / 2; kr++) {
+          for (int kc = -kernel.getKernelSize() / 2; kc <= kernel.getKernelSize() / 2; kc++) {
             // Skip if kernel value is 0
-            if (kernel(kr + kernel.rows / 2, kc + kernel.cols / 2) == 0) { continue; }
+            if (kernel(kr + kernel.getKernelSize() / 2, kc + kernel.getKernelSize() / 2) == 0) { continue; }
             int imageR = r + kr;
             int imageC = c + kc;
             if (imageR >= 0 && imageR < R && imageC >= 0 && imageC < C) {
@@ -599,11 +654,11 @@ public:
 
   void histogramEquilization(bool saveToCSV = false) {
     // Convert 24-bit image to grayscale
-    std::vector<std::vector<int>> grayscaleImage = this->convertToGrayscaleImage();
+    std::vector<std::vector<uint8_t>> grayscaleImage = this->convertToGrayscaleImage();
     // Apply histogram equilization to the grayscale image
     const int numRows = grayscaleImage.size();
     const int numCols = grayscaleImage[0].size();
-    std::unordered_map<int, int> histogram;
+    std::unordered_map<uint8_t, int> histogram;
     histogram.reserve(256); // Reserve space for 256 possible pixel values
     for (int r = 0; r < numRows; ++r) {
       for (int c = 0; c < numCols; ++c) {
@@ -682,10 +737,10 @@ public:
 
   void lightingCorrection(bool linear = true) {
     // Convert 24-bit image to grayscale
-    std::vector<std::vector<int>> grayscaleImage = this->convertToGrayscaleImage();
+    std::vector<std::vector<uint8_t>> grayscaleImage = this->convertToGrayscaleImage();
     // Find the min and max pixel values in the grayscale image
-    int minPixelValue = 255;
-    int maxPixelValue = 0;
+    uint8_t minPixelValue = 255;
+    uint8_t maxPixelValue = 0;
     for (const auto& row : grayscaleImage) {
       for (const auto& pixel : row) {
         minPixelValue = std::min(minPixelValue, pixel);
@@ -1041,14 +1096,64 @@ public:
     // First convert the image to grayscale
     std::vector<std::vector<uint8_t>> grayscaleImage = this->convertToGrayscaleImage();
     // Apply Gaussian smoothing using a kernel
-    StructuringElement kernel(kernelSize, kernelSize);
+    StructuringElement kernel(kernelSize);
     kernel.initGaussianKernel(sigma);
     std::vector<std::vector<uint8_t>> smoothedImage = this->convolution(grayscaleImage, kernel);
     // Return the smoothed image
     return smoothedImage;
   }
 
-  void imageGradient();
+  void imageGradient(const std::vector<std::vector<uint8_t>>& image, std::string kernel = "Sobel") {
+    // Compute image gradient on the given image
+    StructuringElement GX(2);
+    StructuringElement GY(2);
+    if (kernel == "Sobel") {
+      GX.initSobelKernel(true);
+      GY.initSobelKernel(false);
+    } else if (kernel == "RobertCross") {
+      GX.initRobertCrossKernel(true);
+      GY.initRobertCrossKernel(false);
+    } else {
+      throw std::runtime_error("Unsupported kernel type: " + kernel);
+    }
+    std::vector<std::vector<ImageGradient>> imageGradient;
+    const int numRows = image.size();
+    const int numCols = image[0].size();
+    imageGradient.resize(numRows, std::vector<ImageGradient>(numCols));
+    float gradMax = 0.0f;
+    for (int r = 0; r < numRows - 1; r++) {
+      for (int c = 0; c < numCols - 1; c++) {
+        // Gx = I(i,j) - I(i+1,j+1)
+        // Gy = I(i + 1, j) - I(i, j + 1)
+        if (kernel == "Sobel") {
+          if (r == 0 || c == 0) { continue; } // Skip r and c == 0
+          double gx = (image[r - 1][c + 1] - image[r - 1][c - 1]) +
+            2 * (image[r][c + 1] - image[r][c - 1]) +
+            (image[r + 1][c + 1] - image[r + 1][c - 1]);
+          double gy = (image[r + 1][c - 1] - image[r - 1][c - 1]) +
+            2 * (image[r + 1][c] - image[r - 1][c]) +
+            (image[r + 1][c + 1] - image[r - 1][c + 1]);
+          imageGradient[r - 1][c - 1].magnitude = std::sqrt(gx * gx + gy * gy);
+          imageGradient[r - 1][c - 1].direction = std::atan2(gy, gx); // [rad]
+          gradMax = std::max(gradMax, imageGradient[r - 1][c - 1].magnitude);
+        } else if (kernel == "RobertCross") {
+          double gx = image[r][c] - image[r + 1][c + 1];
+          double gy = image[r + 1][c] - image[r][c + 1];
+          imageGradient[r][c].magnitude = std::sqrt(gx * gx + gy * gy);
+          imageGradient[r][c].direction = std::atan2(gy, gx); // [rad]
+          gradMax = std::max(gradMax, imageGradient[r][c].magnitude);
+        } 
+      }
+    }
+
+    // Normalize Gradient between [0, 255]
+    for (int r = 0; r < numRows; r++) {
+      for (int c = 0; c < numCols; c++) {
+        imageGradient[r][c].magnitude /= gradMax;
+        imageGradient[r][c].magnitude *= 255.0f; // [0, 255]
+      }
+    }
+  }
 
   void findThresholds();
 
