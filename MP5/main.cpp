@@ -77,6 +77,20 @@ void combineHistograms(const std::vector<std::string> files) {
   }
 }
 
+void bmp2png(const std::string file) {
+  // Convert BMP files to PNG using OpenCV
+  std::string pngFile = file.substr(0, file.find_last_of('.')) + ".png";
+  cv::Mat image = cv::imread(file);
+  if (image.empty()) {
+    std::cerr << "Error reading image: " << file << std::endl;
+  }
+  if (!cv::imwrite(pngFile, image)) {
+    std::cerr << "Error writing PNG file: " << pngFile << std::endl;
+  } else {
+    std::cout << "Converted " << file << " to " << pngFile << std::endl;
+  }
+}
+
 int main() {
   std::cout << "BMP Image Processing" << std::endl;
   std::vector<std::string> images;
@@ -109,7 +123,9 @@ int main() {
         suppressionMethod, // NonMaxima Suppression Method [interpolation, quantized]
         gradMethod // Gradient Method [Sobel, RobertCross]
       );
-      bmp.save(bmp.getName() + "_edges.bmp");
+      const std::string edgeFile = bmp.getName() + "_edges.bmp";
+      bmp.save(edgeFile);
+      bmp2png(edgeFile);
       std::cout << "==========================" << std::endl;
     }
     catch (const std::exception& e) {
