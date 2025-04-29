@@ -8,7 +8,7 @@
  * @details 2.0 - Includes support for morphological operations: erosion, dilation, opening, and closing.
  * @details 3.0 - Support reading 24-bit color images, histogram equilization, and lighting correction.
  * @details 4.0 - Support for user pixel selection, color space conversion, and color histogram
- * @details 5.0 - ...
+ * @details 5.0 - Implemented Gaussian Blur, Canny Edge Detection, and RobertCross/Sobel Kernel convolutions.
  *
  * @note Features to add:
  * - Pixel struct/class
@@ -204,7 +204,7 @@ private:
 };
 
 struct ImageGradient {
-  float magnitude{0};
+  float magnitude{0}; // Normalized magnitude
   float direction{0}; // [rad]
 };
 
