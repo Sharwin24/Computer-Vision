@@ -91,21 +91,23 @@ int main() {
   }
   std::cout << std::endl;
   std::vector<std::string> histogramFiles;
+  const float sigma = 0.875f; // Higher sigma will blur the image more
+  const float percentNonEdge = 0.945f; // Lower values are more lenient
+  const std::string gradMethod = "Sobel";
+  const std::string suppressionMethod = "interpolation";
   for (const auto& image : images) {
     try {
       std::cout << "==========================" << std::endl;
       std::cout << "Processing " << image << std::endl;
-      const float sigma = 0.9f;
-      const float percentNonEdge = 0.78f;
       BMPImage bmp(image.c_str());
-      BMPImage smoothedBmp(bmp, bmp.gaussianSmoothing(sigma));
-      smoothedBmp.save(bmp.getName() + "_smoothed.bmp");
+      auto smoothedImage = BMPImage(bmp, bmp.gaussianSmoothing(sigma));
+      smoothedImage.save(smoothedImage.getName() + "_smoothed.bmp");
       bmp.printInfo();
       bmp.cannyEdgeDetector(
         sigma, // Sigma for Gaussian Smoothing
         percentNonEdge, // PercentNonEdge for Hysteresis Thresholding
-        "interpolation", // NonMaxima Suppression Method [interpolation, quantized]
-        "Sobel" // Gradient Method [Sobel, RobertCross]
+        suppressionMethod, // NonMaxima Suppression Method [interpolation, quantized]
+        gradMethod // Gradient Method [Sobel, RobertCross]
       );
       bmp.save(bmp.getName() + "_edges.bmp");
       std::cout << "==========================" << std::endl;

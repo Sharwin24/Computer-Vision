@@ -204,8 +204,8 @@ private:
 };
 
 struct ImageGradient {
-  float magnitude;
-  float direction; // [rad]
+  float magnitude{0};
+  float direction{0}; // [rad]
 };
 
 enum class ColorSpace {
@@ -1095,11 +1095,11 @@ public:
     // Use a Gaussian filter to smooth the grayscale image.
     // First convert the image to grayscale
     std::vector<std::vector<uint8_t>> grayscaleImage = this->convertToGrayscaleImage();
-    // Apply Gaussian smoothing using a kernel
+    // Apply Gaussian smoothing using a 5x5 kernel
     StructuringElement kernel(5);
     kernel.initGaussianKernel(sigma);
     std::vector<std::vector<uint8_t>> smoothedImage = this->convolution(grayscaleImage, kernel);
-    std::cout << "Applied Gaussian smoothing with sigma = " << sigma << std::endl;
+    std::cout << "Applied Gaussian Smoothing (5x5 kernel) using sigma = " << sigma << std::endl;
     // Return the smoothed image
     return smoothedImage;
   }
@@ -1107,8 +1107,8 @@ public:
   void cannyEdgeDetector(float sigma, float percentNonEdge, std::string suppressionMethod, std::string gradientMethod) {
     auto smoothed = this->gaussianSmoothing(sigma);
     auto grad = this->imageGradient(smoothed, gradientMethod);
-    auto suppressed = this->nonMaximaSuppression(grad, suppressionMethod);
-    std::vector<std::vector<bool>> edgeMap = this->hysteresisThresholding(grad, percentNonEdge);
+    auto suppressedGradient = this->nonMaximaSuppression(grad, suppressionMethod);
+    std::vector<std::vector<bool>> edgeMap = this->hysteresisThresholding(suppressedGradient, percentNonEdge);
     // Using the edge map, black out pixels that are not edges
     // and create a new image with the edges highlighted
     const int numRows = smoothed.size();
@@ -1204,7 +1204,8 @@ private:
   }
 
   std::vector<std::vector<bool>> hysteresisThresholding(
-    const std::vector<std::vector<ImageGradient>>& imageGradient, float percentNonEdge) {
+    const std::vector<std::vector<ImageGradient>>& imageGradient,
+    float percentNonEdge) {
     // Find the threshold values for edge linking
     // Calculate high threshold and low will be extrapolated as 0.5 * highThreshold
     // percentNonEdge is the specified percentage of Non-edge area in magnitudes
@@ -1268,12 +1269,12 @@ private:
     return linkedEdges;
   }
 
-  std::vector<std::vector<float>> nonMaximaSuppression(
+  std::vector<std::vector<ImageGradient>> nonMaximaSuppression(
     const std::vector<std::vector<ImageGradient>>& imageGradient,
     std::string method = "interpolation") {
     const int numRows = imageGradient.size();
     const int numCols = imageGradient[0].size();
-    std::vector<std::vector<float>> suppressed(numRows, std::vector<float>(numCols, 0.0f));
+    std::vector<std::vector<ImageGradient>> suppressed(numRows, std::vector<ImageGradient>(numCols));
     for (int r = 1; r < numRows - 1; r++) {
       for (int c = 1; c < numCols - 1; c++) {
         // Get the gradient direction and magnitude
@@ -1294,7 +1295,8 @@ private:
           float mag1 = this->bilinearInterpolation(imageGradient, y1, x1);
           float mag2 = this->bilinearInterpolation(imageGradient, y2, x2);
           if (magnitude >= mag1 && magnitude >= mag2) {
-            suppressed[r][c] = magnitude; // Keep the pixel
+            suppressed[r][c].magnitude = magnitude; // Keep the pixel
+            suppressed[r][c].direction = direction; // Keep the direction
           }
         } else if (method == "quantized") {
           // Quantized directions: 0 = 0, 1 = 45, 2 = 90, 3 = 135 degrees
@@ -1327,7 +1329,8 @@ private:
           float mag1 = imageGradient[ny1][nx1].magnitude;
           float mag2 = imageGradient[ny2][nx2].magnitude;
           if (magnitude >= mag1 && magnitude >= mag2) {
-            suppressed[r][c] = magnitude; // Keep the pixel
+            suppressed[r][c].magnitude = magnitude; // Keep the pixel
+            suppressed[r][c].direction = direction; // Keep the direction
           }
         } else {
           throw std::runtime_error("Unsupported non-maxima suppression method: " + method);
