@@ -1099,6 +1099,7 @@ public:
     StructuringElement kernel(5);
     kernel.initGaussianKernel(sigma);
     std::vector<std::vector<uint8_t>> smoothedImage = this->convolution(grayscaleImage, kernel);
+    std::cout << "Applied Gaussian smoothing with sigma = " << sigma << std::endl;
     // Return the smoothed image
     return smoothedImage;
   }
@@ -1107,7 +1108,35 @@ public:
     auto smoothed = this->gaussianSmoothing(sigma);
     auto grad = this->imageGradient(smoothed, gradientMethod);
     auto suppressed = this->nonMaximaSuppression(grad, suppressionMethod);
-    auto edgeMap = this->hysteresisThresholding(grad, percentNonEdge);
+    std::vector<std::vector<bool>> edgeMap = this->hysteresisThresholding(grad, percentNonEdge);
+    // Using the edge map, black out pixels that are not edges
+    // and create a new image with the edges highlighted
+    const int numRows = smoothed.size();
+    const int numCols = smoothed[0].size();
+    for (int r = 0; r < numRows; ++r) {
+      for (int c = 0; c < numCols; ++c) {
+        if (edgeMap[r][c]) {
+          this->pixelData2D[r][c * 3 + 0] = 255;     // Blue
+          this->pixelData2D[r][c * 3 + 1] = 255;     // Green
+          this->pixelData2D[r][c * 3 + 2] = 255;     // Red
+        } else {
+          this->pixelData2D[r][c * 3 + 0] = 0; // Black out pixel
+          this->pixelData2D[r][c * 3 + 1] = 0;
+          this->pixelData2D[r][c * 3 + 2] = 0;
+        }
+      }
+    }
+    // Update the BMP info header for 24-bit color depth
+    this->infoHeader.bit_count = 24;
+    int rowSize = ((this->infoHeader.bit_count * this->infoHeader.width + 31) / 32) * 4;
+    this->infoHeader.size_image = rowSize * std::abs(this->infoHeader.height);
+    this->infoHeader.colors_used = 0; // Not used for 24-bit images
+    this->infoHeader.compression = 0; // No compression
+    this->infoHeader.size = sizeof(BMPInfoHeader);
+    // Update the file header offset to point to the new pixel data
+    this->fileHeader.offset_data = sizeof(BMPFileHeader) + sizeof(BMPInfoHeader);
+    // Update the file size
+    this->fileHeader.file_size = this->fileHeader.offset_data + this->infoHeader.size_image;
   }
 
 private:
@@ -1132,6 +1161,7 @@ private:
     } else {
       throw std::runtime_error("Unsupported kernel type: " + kernel);
     }
+    std::cout << "Using " << kernel << " kernel for gradient computation" << std::endl;
     std::vector<std::vector<ImageGradient>> imageGradient;
     const int numRows = image.size();
     const int numCols = image[0].size();
@@ -1190,12 +1220,12 @@ private:
     // Sort the magnitudes in descending order
     std::sort(magnitudes.begin(), magnitudes.end(), std::greater<float>());
     const int numPixels = magnitudes.size();
+    // Find threshold based on the percentage of non-edge pixels
     const int highThresholdIndex = static_cast<int>(numPixels * (1.0f - percentNonEdge));
     const float highThreshold = magnitudes[std::min(highThresholdIndex, numPixels - 1)];
     const float lowThreshold = highThreshold * 0.5f;
-    // Compute thresholds
-    std::cout << "High Threshold: " << highThreshold << std::endl;
-    std::cout << "Low Threshold: " << lowThreshold << std::endl;
+    std::cout << "Hysteresis Thresholding using " << (percentNonEdge * 100) << "% non-edge pixels" << std::endl;
+    std::cout << "Low: " << lowThreshold << " High: " << highThreshold << std::endl;
     // Build strong and weak edge maps
     std::vector<std::vector<bool>> strong(numRows, std::vector<bool>(numCols, false));
     std::vector<std::vector<bool>> weak(numRows, std::vector<bool>(numCols, false));
@@ -1209,8 +1239,7 @@ private:
       }
     }
     // Trace edges to create final edge map
-    std::vector<std::vector<bool>> edgeMap(numRows, std::vector<bool>(numCols, false));
-    edgeMap = this->edgeLinking(strong, weak);
+    return this->edgeLinking(strong, weak);
   }
 
   std::vector<std::vector<bool>> edgeLinking(

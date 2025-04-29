@@ -95,11 +95,15 @@ int main() {
     try {
       std::cout << "==========================" << std::endl;
       std::cout << "Processing " << image << std::endl;
+      const float sigma = 0.9f;
+      const float percentNonEdge = 0.78f;
       BMPImage bmp(image.c_str());
+      BMPImage smoothedBmp(bmp, bmp.gaussianSmoothing(sigma));
+      smoothedBmp.save(bmp.getName() + "_smoothed.bmp");
       bmp.printInfo();
       bmp.cannyEdgeDetector(
-        1.0f, // Sigma
-        0.8f, // PercentNonEdge
+        sigma, // Sigma for Gaussian Smoothing
+        percentNonEdge, // PercentNonEdge for Hysteresis Thresholding
         "interpolation", // NonMaxima Suppression Method [interpolation, quantized]
         "Sobel" // Gradient Method [Sobel, RobertCross]
       );
