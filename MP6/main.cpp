@@ -110,7 +110,7 @@ int main() {
       BMPImage bmp(image.c_str());
       bmp.printInfo();
       bmp.cannyEdgeDetector(
-        0.75f, 0.97, "interpolation", "Sobel"
+        0.725f, 0.97, "interpolation", "Sobel"
       );
       bmp.houghTransform(
         25, // Threshold for line detection
