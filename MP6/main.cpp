@@ -96,6 +96,7 @@ int main() {
   std::vector<std::string> images;
   images.push_back("test.bmp");
   images.push_back("test2.bmp");
+  images.push_back("input.bmp");
   std::cout << "Using OpenCV Version: " << CV_VERSION << std::endl;
   std::cout << "Processing images" << std::endl;
   for (const auto& image : images) {
@@ -108,6 +109,15 @@ int main() {
       std::cout << "Processing " << image << std::endl;
       BMPImage bmp(image.c_str());
       bmp.printInfo();
+      bmp.cannyEdgeDetector(
+        0.75f, 0.97, "interpolation", "Sobel"
+      );
+      bmp.houghTransform(
+        25, // Threshold for line detection
+        500 // Line length
+      );
+      const std::string edgeFile = bmp.getName() + "_hough.bmp";
+      bmp.save(edgeFile);
       std::cout << "==========================" << std::endl;
     }
     catch (const std::exception& e) {

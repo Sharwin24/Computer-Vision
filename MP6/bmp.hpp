@@ -271,7 +271,7 @@ public:
     std::cout << std::endl;
 
     // Print to a log file to visually verify raw pixel data
-    std::ofstream logFile("test_cpp_raw.txt");
+    std::ofstream logFile("raw_pixel_data.txt");
     if (logFile.is_open()) {
       logFile << "Pixel Data (2D):\n";
       for (const auto& row : this->pixelData2D) {
@@ -1138,6 +1138,86 @@ public:
     this->fileHeader.offset_data = sizeof(BMPFileHeader) + sizeof(BMPInfoHeader);
     // Update the file size
     this->fileHeader.file_size = this->fileHeader.offset_data + this->infoHeader.size_image;
+  }
+
+  void houghTransform(const int threshold, const int lineLength) {
+    // Assume Canny edge detection has already been applied
+    // The image is 24-bit and edges are highlighted
+    // Edges are white (255, 255, 255) and non-edges are black (0, 0, 0)
+    const int numRows = this->pixelData2D.size();
+    const int numCols = this->pixelData2D[0].size();
+    // Create a Hough accumulator
+    const int numAngles = 180; // Number of angles to consider [0, 180]
+    const int numRho = std::hypot(numRows, numCols); // Maximum rho value
+    std::vector <std::vector<int>> accumulator(2 * numRho, std::vector<int>(numAngles, 0));
+    for (int r = 0; r < numRows; r++) {
+      for (int c = 0; c < numCols; c++) {
+        uint8_t blue = this->pixelData2D[r][c * 3 + 0]; // Blue
+        uint8_t green = this->pixelData2D[r][c * 3 + 1]; // Green
+        uint8_t red = this->pixelData2D[r][c * 3 + 2]; // Red
+        if (blue != 0 && green != 0 && red != 0) { // Edge Pixel
+          // Accummulate the rho values for each angle
+          for (int theta = 0; theta < numAngles; theta++) {
+            float rad = theta * M_PI / numAngles; // Convert to radians
+            int rho = static_cast<int>(c * std::cos(rad) + r * std::sin(rad)); // Rho value
+            rho += numRho; // Shift rho to positive range
+            // Accumulate rho if within bounds
+            if (rho >= 0 && rho < 2 * numRho) { accumulator[rho][theta]++; }
+          }
+        }
+      }
+    }
+
+    // Find the peaks in the accumulator
+    std::vector<std::pair<int, int>> lines; // (rho, theta)
+    for (int rho = 0; rho < numRho; rho++) {
+      for (int theta = 0; theta < numAngles; theta++) {
+        if (accumulator[rho][theta] > threshold) {
+          lines.emplace_back(rho, theta); // Store the peak
+        }
+      }
+    }
+
+    // For each (rho, theta), draw a line on the original image
+    for (const auto& line : lines) {
+      int rho = line.first;
+      int theta = line.second;
+      float rad = theta * M_PI / 180.0f; // Convert to radians
+
+      // Calculate the endpoints of the line
+      float cosRho = std::cos(rad);
+      float sinRho = std::sin(rad);
+      int x0 = static_cast<int>(rho * cosRho); // X coordinate
+      int y0 = static_cast<int>(rho * sinRho); // Y coordinate
+      int x1 = static_cast<int>(x0 + lineLength * -sinRho); // X coordinate of endpoint 1
+      int y1 = static_cast<int>(y0 + lineLength * cosRho); // Y coordinate of endpoint 1
+
+      // Draw line on original image
+      // interpolate between the two points and fill in nearest pixels
+      for (int i = -lineLength / 2; i <= lineLength / 2; ++i) {
+        int lineX = static_cast<int>(x0 + i * -sinRho);
+        int lineY = static_cast<int>(y0 + i * cosRho);
+        // Check bounds before drawing
+        if (lineX >= 0 && lineX < numCols && lineY >= 0 && lineY < numRows) {
+          this->pixelData2D[lineY][lineX * 3 + 0] = 255; // Blue
+          this->pixelData2D[lineY][lineX * 3 + 1] = 255;   // Green
+          this->pixelData2D[lineY][lineX * 3 + 2] = 255;   // Red
+        }
+      }
+    }
+    std::cout << "Hough Transform found " << lines.size() << " lines" << std::endl;
+
+    // // Update the BMP info header for 24-bit color depth
+    // this->infoHeader.bit_count = 24;
+    // int rowSize = ((this->infoHeader.bit_count * this->infoHeader.width + 31) / 32) * 4;
+    // this->infoHeader.size_image = rowSize * std::abs(this->infoHeader.height);
+    // this->infoHeader.colors_used = 0; // Not used for 24-bit images
+    // this->infoHeader.compression = 0; // No compression
+    // this->infoHeader.size = sizeof(BMPInfoHeader);
+    // // Update the file header offset to point to the new pixel data
+    // this->fileHeader.offset_data = sizeof(BMPFileHeader) + sizeof(BMPInfoHeader);
+    // // Update the file size
+    // this->fileHeader.file_size = this->fileHeader.offset_data + this->infoHeader.size_image;
   }
 
 private:

@@ -1,0 +1,5 @@
+[1] https://solarianprogrammer.com/2018/11/19/cpp-reading-writing-bmp-images/
+[2] https://www.grayscaleimage.com/three-algorithms-for-converting-color-to-grayscale/
+[3] https://hypjudy.github.io/2017/03/19/dip-histogram-equalization/
+[4] https://answers.opencv.org/question/62446/conversion-from-rgb-to-hsi/
+[5] https://arm-software.github.io/CMSIS-DSP/v1.10.1/group__BilinearInterpolate.html
