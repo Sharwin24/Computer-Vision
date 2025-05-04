@@ -215,6 +215,12 @@ enum class ColorSpace {
   NBGR, // Normalized BGR
 };
 
+struct Line {
+  int rho; // Distance from the origin
+  int theta; // Angle from the x-axis
+  int votes; // Number of votes for this line (Hough Transform)
+};
+
 class BMPImage {
 public:
   BMPImage() = delete;
@@ -1140,7 +1146,117 @@ public:
     this->fileHeader.file_size = this->fileHeader.offset_data + this->infoHeader.size_image;
   }
 
-  void houghTransform(const int threshold, const int lineLength) {
+  void hough(int thresholdVotes, int maxLines = 100) {
+    const int numRows = this->pixelData2D.size();
+    const int numCols = this->pixelData2D[0].size();
+    // Create a Hough accumulator
+    const int numAngles = 180;
+    const int maxRho = static_cast<int>(std::hypot(numRows, numCols));
+    const int totalRho = 2 * maxRho;
+    std::vector<std::vector<int>> accumulator(totalRho, std::vector<int>(numAngles, 0));
+    // Iterate through the image and populate the accumulator
+    for (int r = 0; r < numRows; r++) {
+      for (int c = 0; c < numCols; c++) {
+        uint8_t blue = this->pixelData2D[r][c * 3 + 0]; // Blue
+        uint8_t green = this->pixelData2D[r][c * 3 + 1]; // Green
+        uint8_t red = this->pixelData2D[r][c * 3 + 2]; // Red
+        if (blue != 0 && green != 0 && red != 0) { // Edge Pixel
+          for (int theta = 0; theta < numAngles; theta++) {
+            float rad = theta * (M_PI / 180.0f); // Convert to radians
+            float rho = c * std::cos(rad) + r * std::sin(rad); // Rho value
+            // Use std::round to avoid truncation and shift rho to positive range
+            int rhoIndex = static_cast<int>(std::round(rho)) + maxRho;
+            if (rhoIndex >= 0 && rhoIndex < totalRho) {
+              accumulator[rhoIndex][theta]++;
+            }
+          }
+        }
+      }
+    }
+    // Find the peaks in the accumulator
+    std::vector<Line> lines;
+    for (int rho = 1; rho < totalRho - 1; rho++) {
+      for (int theta = 1; theta < numAngles - 1; theta++) {
+        int currentVotes = accumulator[rho][theta];
+        if (currentVotes > thresholdVotes) {
+          // Check for local maxima by looking at 8-connected neighbors
+          bool isLocalMax =
+            currentVotes >= accumulator[rho - 1][theta - 1] &&
+            currentVotes >= accumulator[rho - 1][theta] &&
+            currentVotes >= accumulator[rho - 1][theta + 1] &&
+            currentVotes >= accumulator[rho][theta - 1] &&
+            currentVotes >= accumulator[rho][theta + 1] &&
+            currentVotes >= accumulator[rho + 1][theta - 1] &&
+            currentVotes >= accumulator[rho + 1][theta] &&
+            currentVotes >= accumulator[rho + 1][theta + 1];
+          if (isLocalMax) {
+            Line line;
+            line.rho = rho;
+            line.theta = theta;
+            line.votes = currentVotes;
+            lines.push_back(line);
+          }
+        }
+      }
+    }
+    // Sort lines by number of votes
+    std::sort(lines.begin(), lines.end(), [](const Line& a, const Line& b) {
+      return a.votes > b.votes;
+    });
+    // Limit lines by maxLines
+    std::vector<Line> selectedLines;
+    const int lineCount = std::min(maxLines, static_cast<int>(lines.size()));
+    selectedLines.reserve(lineCount);
+    for (int i = 0; i < lineCount; i++) {
+      selectedLines.push_back(lines[i]);
+    }
+
+    // std::cout << "Hough Transform found " << lineCount << " lines" << std::endl;
+    // Draw lines on the original image
+    for (const auto& line : selectedLines) {
+      int rhoIndex = line.rho;
+      int theta = line.theta;
+      float rad = theta * (M_PI / 180.0f); // Convert to radians
+      float cosTheta = std::cos(rad);
+      float sinTheta = std::sin(rad);
+      int shiftedRho = rhoIndex - maxRho; // Shift rho to original range
+      if (std::abs(sinTheta) > 1e-6) {
+        // Regular case: solve for y
+        for (int x = 0; x < numCols; ++x) {
+          int y = static_cast<int>((shiftedRho - x * cosTheta) / sinTheta);
+          if (y >= 0 && y < numRows) {
+            this->pixelData2D[y][x * 3 + 0] = 255; // Blue
+            this->pixelData2D[y][x * 3 + 1] = 0;   // Green
+            this->pixelData2D[y][x * 3 + 2] = 0;   // Red
+          }
+        }
+      } else if (std::abs(cosTheta) > 1e-6) {
+        // Vertical case: solve for x
+        int x = static_cast<int>(shiftedRho / cosTheta);
+        if (x >= 0 && x < numCols) {
+          for (int y = 0; y < numRows; ++y) {
+            this->pixelData2D[y][x * 3 + 0] = 255; // Blue
+            this->pixelData2D[y][x * 3 + 1] = 0;   // Green
+            this->pixelData2D[y][x * 3 + 2] = 0;   // Red
+          }
+        }
+      }
+    }
+    std::cout << "Hough Transform drew " << lineCount << " lines" << std::endl;
+    // Update the BMP info header for 24-bit color depth
+    this->infoHeader.bit_count = 24;
+    int rowSize = ((this->infoHeader.bit_count * this->infoHeader.width + 31) / 32) * 4;
+    this->infoHeader.size_image = rowSize * std::abs(this->infoHeader.height);
+    this->infoHeader.colors_used = 0; // Not used for 24-bit images
+    this->infoHeader.compression = 0; // No compression
+    this->infoHeader.size = sizeof(BMPInfoHeader);
+    // Update the file header offset to point to the new pixel data
+    this->fileHeader.offset_data = sizeof(BMPFileHeader) + sizeof(BMPInfoHeader);
+    // Update the file size
+    this->fileHeader.file_size = this->fileHeader.offset_data + this->infoHeader.size_image;
+  }
+
+  void houghTransform(const int threshold) {
     // Assume Canny edge detection has already been applied
     // The image is 24-bit and edges are highlighted
     // Edges are white (255, 255, 255) and non-edges are black (0, 0, 0)
@@ -1170,7 +1286,7 @@ public:
 
     // Find the peaks in the accumulator
     std::vector<std::pair<int, int>> lines; // (rho, theta)
-    for (int rho = 0; rho < numRho; rho++) {
+    for (int rho = 0; rho < 2 * numRho; rho++) {
       for (int theta = 0; theta < numAngles; theta++) {
         if (accumulator[rho][theta] > threshold) {
           lines.emplace_back(rho, theta); // Store the peak
@@ -1183,41 +1299,43 @@ public:
       int rho = line.first;
       int theta = line.second;
       float rad = theta * M_PI / 180.0f; // Convert to radians
-
-      // Calculate the endpoints of the line
-      float cosRho = std::cos(rad);
-      float sinRho = std::sin(rad);
-      int x0 = static_cast<int>(rho * cosRho); // X coordinate
-      int y0 = static_cast<int>(rho * sinRho); // Y coordinate
-      int x1 = static_cast<int>(x0 + lineLength * -sinRho); // X coordinate of endpoint 1
-      int y1 = static_cast<int>(y0 + lineLength * cosRho); // Y coordinate of endpoint 1
-
-      // Draw line on original image
-      // interpolate between the two points and fill in nearest pixels
-      for (int i = -lineLength / 2; i <= lineLength / 2; ++i) {
-        int lineX = static_cast<int>(x0 + i * -sinRho);
-        int lineY = static_cast<int>(y0 + i * cosRho);
-        // Check bounds before drawing
-        if (lineX >= 0 && lineX < numCols && lineY >= 0 && lineY < numRows) {
-          this->pixelData2D[lineY][lineX * 3 + 0] = 255; // Blue
-          this->pixelData2D[lineY][lineX * 3 + 1] = 255;   // Green
-          this->pixelData2D[lineY][lineX * 3 + 2] = 255;   // Red
+      const float cosRho = std::cos(rad);
+      const float sinRho = std::sin(rad);
+      if (std::abs(sinRho) > 1e-6) {
+        // Regular case: solve for y
+        for (int x = 0; x < numCols; ++x) {
+          int y = static_cast<int>((rho - x * cosRho) / sinRho);
+          if (y >= 0 && y < numRows) {
+            this->pixelData2D[y][x * 3 + 0] = 255; // Blue
+            this->pixelData2D[y][x * 3 + 1] = 0;   // Green
+            this->pixelData2D[y][x * 3 + 2] = 0;   // Red
+          }
+        }
+      } else if (std::abs(cosRho) > 1e-6) {
+        // Vertical case: solve for x
+        int x = static_cast<int>(rho / cosRho);
+        if (x >= 0 && x < numCols) {
+          for (int y = 0; y < numRows; ++y) {
+            this->pixelData2D[y][x * 3 + 0] = 255; // Blue
+            this->pixelData2D[y][x * 3 + 1] = 0;   // Green
+            this->pixelData2D[y][x * 3 + 2] = 0;   // Red
+          }
         }
       }
     }
     std::cout << "Hough Transform found " << lines.size() << " lines" << std::endl;
 
-    // // Update the BMP info header for 24-bit color depth
-    // this->infoHeader.bit_count = 24;
-    // int rowSize = ((this->infoHeader.bit_count * this->infoHeader.width + 31) / 32) * 4;
-    // this->infoHeader.size_image = rowSize * std::abs(this->infoHeader.height);
-    // this->infoHeader.colors_used = 0; // Not used for 24-bit images
-    // this->infoHeader.compression = 0; // No compression
-    // this->infoHeader.size = sizeof(BMPInfoHeader);
-    // // Update the file header offset to point to the new pixel data
-    // this->fileHeader.offset_data = sizeof(BMPFileHeader) + sizeof(BMPInfoHeader);
-    // // Update the file size
-    // this->fileHeader.file_size = this->fileHeader.offset_data + this->infoHeader.size_image;
+    // Update the BMP info header for 24-bit color depth
+    this->infoHeader.bit_count = 24;
+    int rowSize = ((this->infoHeader.bit_count * this->infoHeader.width + 31) / 32) * 4;
+    this->infoHeader.size_image = rowSize * std::abs(this->infoHeader.height);
+    this->infoHeader.colors_used = 0; // Not used for 24-bit images
+    this->infoHeader.compression = 0; // No compression
+    this->infoHeader.size = sizeof(BMPInfoHeader);
+    // Update the file header offset to point to the new pixel data
+    this->fileHeader.offset_data = sizeof(BMPFileHeader) + sizeof(BMPInfoHeader);
+    // Update the file size
+    this->fileHeader.file_size = this->fileHeader.offset_data + this->infoHeader.size_image;
   }
 
 private:

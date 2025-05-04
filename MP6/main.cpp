@@ -89,6 +89,8 @@ void bmp2png(const std::string file) {
   } else {
     std::cout << "Converted " << file << " to " << pngFile << std::endl;
   }
+  // Close
+  image.release();
 }
 
 int main() {
@@ -112,14 +114,12 @@ int main() {
       bmp.cannyEdgeDetector(
         0.725f, 0.97, "interpolation", "Sobel"
       );
-      bmp.houghTransform(
-        25, // Threshold for line detection
-        500 // Line length
-      );
-      const std::string edgeFile = bmp.getName() + "_hough.bmp";
-      bmp.save(edgeFile);
-      bmp2png(image);
-      bmp2png(edgeFile);
+      const std::string cannyFile = bmp.getName() + "_canny.bmp";
+      bmp.save(cannyFile);
+      bmp.hough(25); // Threshold for line detection
+      const std::string houghFile = bmp.getName() + "_hough.bmp";
+      bmp.save(houghFile);
+      // bmp2png(edgeFile);
       std::cout << "==========================" << std::endl;
     }
     catch (const std::exception& e) {
