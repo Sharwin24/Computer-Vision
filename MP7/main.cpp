@@ -1,6 +1,7 @@
 #include <iostream>
 #include <fstream>
 #include <vector>
+#include <filesystem>
 
 #include "bmp.hpp"
 
@@ -91,40 +92,31 @@ void bmp2png(const std::string file) {
   }
 }
 
+std::vector<std::string> listFilesInDir(const std::string& dir, const std::string& ext = ".bmp") {
+  std::vector<std::string> images;
+  for (const auto& entry : std::filesystem::directory_iterator(dir)) {
+    if (entry.is_regular_file() && entry.path().extension() == ext) {
+      images.push_back(entry.path().string());
+    }
+  }
+  if (images.empty()) {
+    std::cerr << "No " << ext << " files found in directory: " << dir << std::endl;
+  }
+  std::cout << "Found " << images.size() << " " << ext << " files in directory: " << dir << std::endl;
+  return images;
+}
+
 int main() {
   std::cout << "BMP Image Processing" << std::endl;
-  std::vector<std::string> images;
-  images.push_back("test.bmp");
-  images.push_back("test2.bmp");
-  images.push_back("input.bmp");
   std::cout << "Using OpenCV Version: " << CV_VERSION << std::endl;
   std::cout << "Processing images" << std::endl;
+  std::vector<std::string> images = listFilesInDir("image_girl/", ".jpg");
+  std::vector<BMPImage> bmpImages;
+  bmpImages.reserve(images.size());
   for (const auto& image : images) {
-    std::cout << " - " << image << std::endl;
+    BMPImage bmp(image.c_str());
+    bmpImages.push_back(bmp);
   }
-  std::cout << std::endl;
-  for (const auto& image : images) {
-    try {
-      std::cout << "==========================" << std::endl;
-      std::cout << "Processing " << image << std::endl;
-      BMPImage bmp(image.c_str());
-      bmp.printInfo();
-      bmp.cannyEdgeDetector(
-        0.725f, 0.97, "interpolation", "Sobel"
-      );
-      bmp.houghTransform(
-        25, // Threshold for line detection
-        500 // Line length
-      );
-      const std::string edgeFile = bmp.getName() + "_hough.bmp";
-      bmp.save(edgeFile);
-      bmp2png(image);
-      bmp2png(edgeFile);
-      std::cout << "==========================" << std::endl;
-    }
-    catch (const std::exception& e) {
-      std::cerr << "Error processing " << image << ": " << e.what() << std::endl;
-    }
-  }
+
   return 0;
 }
