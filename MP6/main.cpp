@@ -116,7 +116,7 @@ int main() {
       );
       const std::string cannyFile = bmp.getName() + "_canny.bmp";
       bmp.save(cannyFile);
-      bmp.hough(70); // Threshold for line detection
+      bmp.houghTransform(70); // Threshold for line detection
       const std::string houghFile = bmp.getName() + "_hough.bmp";
       bmp.save(houghFile);
       bmp2png(houghFile);
