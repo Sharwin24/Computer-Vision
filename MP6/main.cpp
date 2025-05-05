@@ -97,8 +97,8 @@ int main() {
   std::cout << "BMP Image Processing" << std::endl;
   std::vector<std::string> images;
   images.push_back("test.bmp");
-  images.push_back("test2.bmp");
-  images.push_back("input.bmp");
+  // images.push_back("test2.bmp");
+  // images.push_back("input.bmp");
   std::cout << "Using OpenCV Version: " << CV_VERSION << std::endl;
   std::cout << "Processing images" << std::endl;
   for (const auto& image : images) {
@@ -112,7 +112,7 @@ int main() {
       BMPImage bmp(image.c_str());
       bmp.printInfo();
       bmp.cannyEdgeDetector(
-        0.75f, 0.96f, "interpolation", "Sobel"
+        0.75f, 0.99f, "interpolation", "Sobel"
       );
       const std::string cannyFile = bmp.getName() + "_canny.bmp";
       bmp.save(cannyFile);
