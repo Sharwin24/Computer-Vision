@@ -1176,11 +1176,10 @@ public:
         }
       }
     }
-    const int accumulatorSize = totalRho * numAngles;
     std::cout << "Hough Accumulator created with size: " << totalRho << "x" << numAngles << std::endl;
     // Find the peaks in the accumulator
     std::vector<Line> lines;
-    lines.reserve(accumulatorSize);
+    lines.reserve(totalRho * numAngles);
     for (int rho = 1; rho < totalRho - 1; rho++) {
       for (int theta = 1; theta < numAngles - 1; theta++) {
         int currentVotes = accumulator[rho][theta];
@@ -1217,7 +1216,6 @@ public:
       selectedLines.push_back(lines[i]);
     }
 
-    // std::cout << "Hough Transform found " << lineCount << " lines" << std::endl;
     // Draw lines on the original image
     for (const auto& line : selectedLines) {
       int rhoIndex = line.rho;
