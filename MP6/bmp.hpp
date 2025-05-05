@@ -1147,8 +1147,11 @@ public:
   }
 
   void hough(int thresholdVotes, int maxLines = 100) {
-    const int numRows = this->pixelData2D.size();
-    const int numCols = this->pixelData2D[0].size();
+    std::cout << "Performing Hough Transform with threshold: " << thresholdVotes << std::endl;
+    // const int numRows = this->pixelData2D.size();
+    // const int numCols = this->pixelData2D[0].size();
+    const int numRows = std::abs(this->infoHeader.height);
+    const int numCols = this->infoHeader.width;
     // Create a Hough accumulator
     const int numAngles = 180;
     const int maxRho = static_cast<int>(std::hypot(numRows, numCols));
@@ -1173,8 +1176,11 @@ public:
         }
       }
     }
+    const int accumulatorSize = totalRho * numAngles;
+    std::cout << "Hough Accumulator created with size: " << totalRho << "x" << numAngles << std::endl;
     // Find the peaks in the accumulator
     std::vector<Line> lines;
+    lines.reserve(accumulatorSize);
     for (int rho = 1; rho < totalRho - 1; rho++) {
       for (int theta = 1; theta < numAngles - 1; theta++) {
         int currentVotes = accumulator[rho][theta];
@@ -1782,6 +1788,7 @@ private:
       }
       this->fileHeader.offset_data += colorTableEntries * sizeof(uint32_t);
     }
+    std::cout << "Pixel data offset: " << this->fileHeader.offset_data << std::endl;
 
     // Calculate row size with padding to 4-byte boundary
     int rowSize = ((this->infoHeader.bit_count * this->infoHeader.width + 31) / 32) * 4;
@@ -1826,7 +1833,7 @@ private:
       }
     }
 
-    // Generate and write pixel data - this section needs to be outside the if/else blocks
+    // Generate and write pixel data to a 1D array
     std::vector<uint8_t> pixelData(imageSize, 0);
 
     if (this->infoHeader.bit_count == 1) {
@@ -1854,7 +1861,6 @@ private:
           // Calculate position in pixelData
           // BMP stores pixel data in reverse order (bottom-up) and as BGR
           unsigned int pixelIndex = (std::abs(this->infoHeader.height) - 1 - r) * rowSize + c * 3;
-
           if (pixelIndex + 2 < pixelData.size()) {
             pixelData[pixelIndex] = this->pixelData2D[r][c * 3];         // Blue
             pixelData[pixelIndex + 1] = this->pixelData2D[r][c * 3 + 1]; // Green

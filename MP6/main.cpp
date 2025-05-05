@@ -112,14 +112,14 @@ int main() {
       BMPImage bmp(image.c_str());
       bmp.printInfo();
       bmp.cannyEdgeDetector(
-        0.725f, 0.97, "interpolation", "Sobel"
+        0.7f, 0.97, "interpolation", "Sobel"
       );
       const std::string cannyFile = bmp.getName() + "_canny.bmp";
       bmp.save(cannyFile);
-      bmp.hough(25); // Threshold for line detection
+      bmp.hough(70); // Threshold for line detection
       const std::string houghFile = bmp.getName() + "_hough.bmp";
       bmp.save(houghFile);
-      // bmp2png(edgeFile);
+      bmp2png(houghFile);
       std::cout << "==========================" << std::endl;
     }
     catch (const std::exception& e) {
