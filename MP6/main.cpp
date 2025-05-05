@@ -112,7 +112,7 @@ int main() {
       BMPImage bmp(image.c_str());
       bmp.printInfo();
       bmp.cannyEdgeDetector(
-        0.7f, 0.97, "interpolation", "Sobel"
+        0.75f, 0.96f, "interpolation", "Sobel"
       );
       const std::string cannyFile = bmp.getName() + "_canny.bmp";
       bmp.save(cannyFile);
