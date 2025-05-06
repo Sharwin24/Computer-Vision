@@ -1112,9 +1112,16 @@ public:
   }
 
   void cannyEdgeDetector(float sigma, float percentNonEdge, std::string suppressionMethod, std::string gradientMethod) {
-    auto smoothed = this->gaussianSmoothing(sigma);
-    auto grad = this->imageGradient(smoothed, gradientMethod);
-    auto suppressedGradient = this->nonMaximaSuppression(grad, suppressionMethod);
+    std::vector<std::vector<uint8_t>> smoothed = this->gaussianSmoothing(sigma);
+    // Convert smoothed image to float for gradient calculation
+    std::vector<std::vector<float>> smoothedFloat(smoothed.size(), std::vector<float>(smoothed[0].size(), 0));
+    for (unsigned int r = 0; r < smoothed.size(); ++r) {
+      for (unsigned int c = 0; c < smoothed[0].size(); ++c) {
+        smoothedFloat[r][c] = static_cast<float>(smoothed[r][c]);
+      }
+    }
+    std::vector<std::vector<ImageGradient>> grad = this->imageGradient(smoothedFloat, gradientMethod);
+    std::vector<std::vector<ImageGradient>> suppressedGradient = this->nonMaximaSuppression(grad, suppressionMethod);
     std::vector<std::vector<bool>> edgeMap = this->hysteresisThresholding(suppressedGradient, percentNonEdge);
     // Using the edge map, black out pixels that are not edges
     // and create a new image with the edges highlighted
@@ -1269,7 +1276,7 @@ private:
   std::vector<Component> components;
   ColorSpace colorSpace = ColorSpace::BGR; // Default color space for BMP
 
-  std::vector<std::vector<ImageGradient>> imageGradient(const std::vector<std::vector<uint8_t>>& image, std::string kernel = "Sobel") {
+  std::vector<std::vector<ImageGradient>> imageGradient(const std::vector<std::vector<float>>& image, std::string kernel = "Sobel") {
     // Compute image gradient on the given image
     StructuringElement GX(2);
     StructuringElement GY(2);

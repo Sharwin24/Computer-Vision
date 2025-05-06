@@ -97,8 +97,8 @@ int main() {
   std::cout << "BMP Image Processing" << std::endl;
   std::vector<std::string> images;
   images.push_back("test.bmp");
-  // images.push_back("test2.bmp");
-  // images.push_back("input.bmp");
+  images.push_back("test2.bmp");
+  images.push_back("input.bmp");
   std::cout << "Using OpenCV Version: " << CV_VERSION << std::endl;
   std::cout << "Processing images" << std::endl;
   for (const auto& image : images) {
