@@ -40,12 +40,24 @@
  // Include OpenCV for Windows and user interaction
 #include <opencv2/opencv.hpp>
 
+// Implement pair hashing in the std namespace
+namespace std {
+  template <>
+  struct hash<std::pair<int, int>> {
+    std::size_t operator()(const std::pair<int, int>& p) const {
+      auto h1 = std::hash<int>{}(p.first);
+      auto h2 = std::hash<int>{}(p.second);
+      return h1 ^ (h2 << 1);
+    }
+  };
+}
+
 #pragma pack(push, 1) // Ensure no padding is added to the structures
 
 #define BMFILETYPE 0x4D42 // 'BM' in ASCII
 
- // --------------- BEGIN_CITATION [1] ---------------- //
- // https://solarianprogrammer.com/2018/11/19/cpp-reading-writing-bmp-images/
+// --------------- BEGIN_CITATION [1] ---------------- //
+// https://solarianprogrammer.com/2018/11/19/cpp-reading-writing-bmp-images/
 struct BMPFileHeader {
   uint16_t file_type{BMFILETYPE};      // File type always BM which is 0x4D42
   uint32_t file_size{0};               // Size of the file (in bytes)
@@ -1232,49 +1244,145 @@ public:
     // this->fileHeader.file_size = this->fileHeader.offset_data + this->infoHeader.size_image;
   }
 
-  float sumOfSquaredDiff(BMPImage temp, const int r, const int c, const int tempR, const int tempC) {
+  float sumOfSquaredDiff(float I, float T) {
     // D = SUM[I(u,v) - T(u,v)]^2
-    float I = this->pixelData2D[r][c];
-    float T = temp.get(tempR, tempC);
     return (I - T) * (I - T);
   }
 
-  float crossCorrelation(BMPImage temp) {
+  float crossCorrelation(float I, float T) {
     // C = SUM[I(u,v)T(u,v)]
+    return I * T;
   }
 
-  float normalizedCrossCorrelation(BMPImage temp) {
+  float normalizedCrossCorrelation(float I, float T, float IAvg, float TAvg, float& IHat2, float& THat2) {
     // \bar{I} = average intensity of I; \bar{T} = average intensity of target
     // \hat{I}(u,v) = I(u,v) - \bar{I}; \hat{T}(u,v) = T(u,v) - \bar{T}
     // N = SUM \hat{I}(u,v) \hat{T}(u,v) / sqrt(SUM[\hat{I}(u,v)^2] * SUM[\hat{T}(u,v)^2])
+    float IHat = I - IAvg; // Normalized intensity of I
+    float THat = T - TAvg; // Normalized intensity of T
+    float N = (IHat * THat);
+    IHat2 = (IHat * IHat);
+    THat2 = (THat * THat);
+    return N;
   }
 
   void imageMatching(BMPImage temp, const std::string method = "SSD") {
-    if (method != "SSD" || method != "CC" || method != "NCC") {
+    if (method != "SSD" && method != "CC" && method != "NCC") {
       throw std::runtime_error("Invalid Image Matching Method: " + method);
     }
-    std::function<void()> compare;
-    const int numRows = this->pixelData2D.size();
-    const int numCols = this->pixelData2D[0].size();
+    std::vector<std::vector<uint8_t>> grayscaled = this->convertToGrayscaleImage();
+    const int numRows = grayscaled.size();
+    const int numCols = grayscaled[0].size();
     const int templateRows = temp.getRows();
     const int templateCols = temp.getCols();
     const int tRHalf = templateRows / 2;
     const int tCHalf = templateCols / 2;
-    // Convolve over the original image using a window with the size of the template
-    float sum = 0;
+    float IAvg = 0.0f;
+    float TAvg = 0.0f;
+    if (method == "NCC") {
+      // Compute the average intensity of the template
+      for (int tr = 0; tr < templateRows; tr++) {
+        for (int tc = 0; tc < templateCols; tc++) {
+          TAvg += static_cast<float>(temp.get(tr, tc));
+        }
+      }
+      TAvg /= (templateRows * templateCols);
+      // Compute the average intensity of the image
+      for (int r = 0; r < numRows; r++) {
+        for (int c = 0; c < numCols; c++) {
+          IAvg += static_cast<float>(grayscaled[r][c]);
+        }
+      }
+      IAvg /= (numRows * numCols);
+    }
+    // Track the window/score pairs
+    std::unordered_map <std::pair<int, int>, float> windowScores;
+    // The map key is a pair of (row, col) of the top-left pixel in the window and the value is the score
+    // Convolve over the grayscale image using a window with the size of the template
     for (int r = 0; r < numRows; r++) {
       for (int c = 0; c < numCols; c++) {
-        for (int tR = -tRHalf; tR < tRHalf; tR++) {
-          for (int tC = -tCHalf; tC < tCHalf; tC++) {
-            const int imageR = r + tR;
-            const int imageC = c + tC;
-            if (imageR >= 0 && imageR < numRows && imageC >= 0 && imageC < numCols) {
-              // Compute image matching method
+        // Check if the template fits within the image bounds
+        if (r - tRHalf < 0 || r + tRHalf >= numRows || c - tCHalf < 0 || c + tCHalf >= numCols) {
+          continue; // Skip this pixel
+        }
+        // Compute the sum based on image matching method
+        float sum = 0.0f;
+        float IHat2Sum = 1e-6f; // Avoid division by zero
+        float THat2Sum = 1e-6f;
+        for (int tr = -tRHalf; tr <= tRHalf; tr++) {
+          for (int tc = -tCHalf; tc <= tCHalf; tc++) {
+            float I = static_cast<float>(grayscaled[r + tr][c + tc]); // Image pixel
+            float T = temp.get(tr + tRHalf, tc + tCHalf); // Template pixel
+            if (method == "SSD") {
+              sum += this->sumOfSquaredDiff(I, T);
+            } else if (method == "CC") {
+              sum += this->crossCorrelation(I, T);
+            } else if (method == "NCC") {
+              float IHat2 = 0.0f;
+              float THat2 = 0.0f;
+              sum += this->normalizedCrossCorrelation(I, T, IAvg, TAvg, IHat2, THat2);
+              IHat2Sum += IHat2;
+              THat2Sum += THat2;
             }
           }
         }
+        if (method == "NCC") {
+          // Normalize the score
+          sum /= std::sqrt(IHat2Sum * THat2Sum);
+        }
+        // Store the score in the map
+        windowScores[std::make_pair(r, c)] = sum;
       }
     }
+    std::cout << "Evaluated " << windowScores.size() << " windows" << std::endl;
+    // Find the best match (minimum score for SSD, maximum score for CC and NCC)
+    std::pair<int, int> bestMatch; // Top-left pixel of the best match
+    float bestScore = (method == "SSD") ? std::numeric_limits<float>::max() : std::numeric_limits<float>::lowest();
+    for (const auto& pair : windowScores) {
+      if ((method == "SSD" && pair.second < bestScore) ||
+        (method != "SSD" && pair.second > bestScore)) {
+        bestMatch = pair.first;
+        bestScore = pair.second;
+      }
+    }
+    std::cout << "Best match found at (" << bestMatch.first << ", " << bestMatch.second << ") with score: " << bestScore << std::endl;
+    // Draw a rectangle around the best match by modifying the pixel data
+    // Use the template size to draw a 1 pixel border around the match
+    for (int tr = -tRHalf; tr <= tRHalf; tr++) {
+      for (int tc = -tCHalf; tc <= tCHalf; tc++) {
+        int r = bestMatch.first + tr;
+        int c = bestMatch.second + tc;
+        // Check bounds before drawing
+        if (r >= 0 && r < numRows && c >= 0 && c < numCols) {
+          this->pixelData2D[r][c * 3 + 0] = 255; // Blue
+          this->pixelData2D[r][c * 3 + 1] = 0;   // Green
+          this->pixelData2D[r][c * 3 + 2] = 0;   // Red
+        }
+      }
+    }
+  }
+
+  void grayscale() {
+    auto grayscaleImage = this->convertToGrayscaleImage();
+    // Update the pixel data to grayscale
+    this->pixelData2D.clear();
+    this->pixelData2D.resize(grayscaleImage.size(), std::vector<uint8_t>(grayscaleImage[0].size(), 0));
+    for (unsigned int r = 0; r < grayscaleImage.size(); r++) {
+      for (unsigned int c = 0; c < grayscaleImage[0].size(); c++) {
+        this->pixelData2D[r][c] = grayscaleImage[r][c];
+      }
+    }
+    // Update the BMP info header for 8-bit grayscale
+    this->infoHeader.bit_count = 8;
+    int rowSize = ((this->infoHeader.bit_count * this->infoHeader.width + 31) / 32) * 4;
+    this->infoHeader.size_image = rowSize * std::abs(this->infoHeader.height);
+    this->infoHeader.colors_used = 256; // 256 colors for grayscale
+    this->infoHeader.compression = 0; // No compression
+    this->infoHeader.size = sizeof(BMPInfoHeader);
+    // Update the file header offset to point to the new pixel data
+    this->fileHeader.offset_data = sizeof(BMPFileHeader) + sizeof(BMPInfoHeader);
+    // Update the file size
+    this->fileHeader.file_size = this->fileHeader.offset_data + this->infoHeader.size_image;
   }
 
 private:
@@ -1629,9 +1737,9 @@ private:
     this->pixelData2D.resize(image.rows, std::vector<uint8_t>(image.cols * 3, 0));
     for (int r = 0; r < image.rows; ++r) {
       for (int c = 0; c < image.cols; ++c) {
-        this->pixelData2D[r][c * 3 + 0] = image.at<cv::Vec3b>(r, c)[0]; // Blue
+        this->pixelData2D[r][c * 3 + 0] = image.at<cv::Vec3b>(r, c)[2]; // Blue
         this->pixelData2D[r][c * 3 + 1] = image.at<cv::Vec3b>(r, c)[1]; // Green
-        this->pixelData2D[r][c * 3 + 2] = image.at<cv::Vec3b>(r, c)[2]; // Red
+        this->pixelData2D[r][c * 3 + 2] = image.at<cv::Vec3b>(r, c)[0]; // Red
       }
     }
     // Update the BMP info header

@@ -114,9 +114,14 @@ int main() {
   std::vector<BMPImage> bmpImages;
   bmpImages.reserve(images.size());
   BMPImage targetImage("target.jpg");
+  // targetImage.grayscale();
+  targetImage.save("target.bmp");
+  const std::string matchingMethod = "SSD"; // ["SSD", "CC", "NCC"]
   for (const auto& image : images) {
     BMPImage bmp(image.c_str());
-    bmpImages.push_back(bmp);
+    // bmp.imageMatching(targetImage, "SSD");
+    bmp.save("output/" + bmp.getName() + ".bmp");
+    // bmpImages.push_back(bmp);
   }
 
   return 0;
