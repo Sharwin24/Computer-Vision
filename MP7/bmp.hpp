@@ -35,6 +35,7 @@
 #include <math.h>
 #include <unordered_set>
 #include <string>
+#include <functional>
 
  // Include OpenCV for Windows and user interaction
 #include <opencv2/opencv.hpp>
@@ -288,6 +289,9 @@ public:
   }
 
   std::string getName() const { return this->name; }
+  int getRows() const { return this->pixelData2D.size(); }
+  int getCols() const { return this->pixelData2D[0].size(); }
+  float get(int row, int col) { return static_cast<float>(this->pixelData2D[row][col]); }
 
   void connectedComponentLabeling() {
     std::cout << "Connected Component Labeling" << std::endl;
@@ -1225,6 +1229,51 @@ public:
     // this->fileHeader.offset_data = sizeof(BMPFileHeader) + sizeof(BMPInfoHeader);
     // // Update the file size
     // this->fileHeader.file_size = this->fileHeader.offset_data + this->infoHeader.size_image;
+  }
+
+  float sumOfSquaredDiff(BMPImage temp, const int r, const int c, const int tempR, const int tempC) {
+    // D = SUM[I(u,v) - T(u,v)]^2
+    float I = this->pixelData2D[r][c];
+    float T = temp.get(tempR, tempC);
+    return (I - T) * (I - T);
+  }
+
+  float crossCorrelation(BMPImage temp) {
+    // C = SUM[I(u,v)T(u,v)]
+  }
+
+  float normalizedCrossCorrelation(BMPImage temp) {
+    // \bar{I} = average intensity of I; \bar{T} = average intensity of target
+    // \hat{I}(u,v) = I(u,v) - \bar{I}; \hat{T}(u,v) = T(u,v) - \bar{T}
+    // N = SUM \hat{I}(u,v) \hat{T}(u,v) / sqrt(SUM[\hat{I}(u,v)^2] * SUM[\hat{T}(u,v)^2])
+  }
+
+  void imageMatching(BMPImage temp, const std::string method = "SSD") {
+    if (method != "SSD" || method != "CC" || method != "NCC") {
+      throw std::runtime_error("Invalid Image Matching Method: " + method);
+    }
+    std::function<void()> compare;
+    const int numRows = this->pixelData2D.size();
+    const int numCols = this->pixelData2D[0].size();
+    const int templateRows = temp.getRows();
+    const int templateCols = temp.getCols();
+    const int tRHalf = templateRows / 2;
+    const int tCHalf = templateCols / 2;
+    // Convolve over the original image using a window with the size of the template
+    float sum = 0;
+    for (int r = 0; r < numRows; r++) {
+      for (int c = 0; c < numCols; c++) {
+        for (int tR = -tRHalf; tR < tRHalf; tR++) {
+          for (int tC = -tCHalf; tC < tCHalf; tC++) {
+            const int imageR = r + tR;
+            const int imageC = c + tC;
+            if (imageR >= 0 && imageR < numRows && imageC >= 0 && imageC < numCols) {
+              // Compute image matching method
+            }
+          }
+        }
+      }
+    }
   }
 
 private:

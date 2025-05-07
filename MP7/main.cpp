@@ -113,6 +113,7 @@ int main() {
   std::vector<std::string> images = listFilesInDir("image_girl/", ".jpg");
   std::vector<BMPImage> bmpImages;
   bmpImages.reserve(images.size());
+  BMPImage targetImage("target.jpg");
   for (const auto& image : images) {
     BMPImage bmp(image.c_str());
     bmpImages.push_back(bmp);
