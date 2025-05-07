@@ -1121,6 +1121,7 @@ public:
     }
     std::vector<std::vector<ImageGradient>> grad = this->imageGradient(smoothedFloat, gradientMethod);
     std::vector<std::vector<ImageGradient>> suppressedGradient = this->nonMaximaSuppression(grad, suppressionMethod);
+    std::vector<std::vector<bool>> edgeMap = this->hysteresisThresholding(suppressedGradient, percentNonEdge);
     // Using the edge map, black out pixels that are not edges
     // and create a new image with the edges highlighted
     const int numRows = smoothed.size();
