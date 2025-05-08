@@ -40,6 +40,8 @@
  // Include OpenCV for Windows and user interaction
 #include <opencv2/opencv.hpp>
 
+#include <omp.h>
+
 // Implement pair hashing in the std namespace
 namespace std {
   template <>
@@ -229,6 +231,20 @@ enum class ColorSpace {
   NBGR, // Normalized BGR
 };
 
+struct SumOfSquaredDiffResult {
+  float sum[3];
+};
+
+struct CrossCorrelationResult {
+  float sum[3];
+};
+
+struct NormCrossCorrelationResult {
+  float numerator[3];
+  float IHat2[3];
+  float THat2[3];
+};
+
 class BMPImage {
 public:
   BMPImage() = delete;
@@ -301,9 +317,9 @@ public:
   }
 
   std::string getName() const { return this->name; }
-  int getRows() const { return this->pixelData2D.size(); }
-  int getCols() const { return this->pixelData2D[0].size(); }
-  float get(int row, int col) { return static_cast<float>(this->pixelData2D[row][col]); }
+  int getRows() const { return this->infoHeader.height; }
+  int getCols() const { return this->infoHeader.width; }
+  int get(int row, int col, int channel) { return this->pixelData2D[row][col * 3 + channel]; }
 
   void connectedComponentLabeling() {
     std::cout << "Connected Component Labeling" << std::endl;
@@ -1244,97 +1260,146 @@ public:
     // this->fileHeader.file_size = this->fileHeader.offset_data + this->infoHeader.size_image;
   }
 
-  float sumOfSquaredDiff(float I, float T) {
+  SumOfSquaredDiffResult sumOfSquaredDiff(const float I[3], const float T[3]) {
     // D = SUM[I(u,v) - T(u,v)]^2
-    return (I - T) * (I - T);
+    // return (I - T) * (I - T);
+    SumOfSquaredDiffResult SSD;
+    for (int i = 0; i < 3; i++) {
+      float diff = I[i] - T[i];
+      SSD.sum[i] = diff * diff;
+    }
+    return SSD;
   }
 
-  float crossCorrelation(float I, float T) {
+  CrossCorrelationResult crossCorrelation(const float I[3], const float T[3]) {
     // C = SUM[I(u,v)T(u,v)]
-    return I * T;
+    // return I * T;
+    CrossCorrelationResult CC;
+    for (int i = 0; i < 3; i++) {
+      CC.sum[i] = I[i] * T[i];
+    }
+    return CC;
   }
 
-  float normalizedCrossCorrelation(float I, float T, float IAvg, float TAvg, float& IHat2, float& THat2) {
+  NormCrossCorrelationResult normalizedCrossCorrelation(const float I[3], const float T[3], const float IAvg[3], const float TAvg[3]) {
     // \bar{I} = average intensity of I; \bar{T} = average intensity of target
     // \hat{I}(u,v) = I(u,v) - \bar{I}; \hat{T}(u,v) = T(u,v) - \bar{T}
     // N = SUM \hat{I}(u,v) \hat{T}(u,v) / sqrt(SUM[\hat{I}(u,v)^2] * SUM[\hat{T}(u,v)^2])
-    float IHat = I - IAvg; // Normalized intensity of I
-    float THat = T - TAvg; // Normalized intensity of T
-    float N = (IHat * THat);
-    IHat2 = (IHat * IHat);
-    THat2 = (THat * THat);
-    return N;
+    NormCrossCorrelationResult NCC;
+    for (int i = 0; i < 3; i++) {
+      float IHat = I[i] - IAvg[i]; // Normalized intensity of I
+      float THat = T[i] - TAvg[i]; // Normalized intensity of T
+      NCC.numerator[i] = IHat * THat; // Numerator
+      NCC.IHat2[i] = IHat * IHat; // IHat^2
+      NCC.THat2[i] = THat * THat; // THat^2
+    }
+    return NCC;
   }
 
   void imageMatching(BMPImage temp, const std::string method = "SSD") {
     if (method != "SSD" && method != "CC" && method != "NCC") {
       throw std::runtime_error("Invalid Image Matching Method: " + method);
     }
-    std::vector<std::vector<uint8_t>> grayscaled = this->convertToGrayscaleImage();
-    const int numRows = grayscaled.size();
-    const int numCols = grayscaled[0].size();
+    const int numRows = this->infoHeader.height;
+    const int numCols = this->infoHeader.width;
+    const int numPixels = numRows * numCols;
     const int templateRows = temp.getRows();
     const int templateCols = temp.getCols();
-    const int tRHalf = templateRows / 2;
-    const int tCHalf = templateCols / 2;
-    float IAvg = 0.0f;
-    float TAvg = 0.0f;
+    const int templateNumPixels = templateRows * templateCols;
+    const int tRHalf = templateRows / 2; // Half the number of rows in the template
+    const int tCHalf = templateCols / 2; // Half the number of columns in the template
+    float IAvg[3] = {0.0f, 0.0f, 0.0f}; // Average intensity of the image [B, G, R]
+    float TAvg[3] = {0.0f, 0.0f, 0.0f}; // Average intensity of the template [B, G, R]
     if (method == "NCC") {
       // Compute the average intensity of the template
       for (int tr = 0; tr < templateRows; tr++) {
         for (int tc = 0; tc < templateCols; tc++) {
-          TAvg += static_cast<float>(temp.get(tr, tc));
+          TAvg[0] += static_cast<float>(temp.get(tr, tc, 0));
+          TAvg[1] += static_cast<float>(temp.get(tr, tc, 1));
+          TAvg[2] += static_cast<float>(temp.get(tr, tc, 2));
         }
       }
-      TAvg /= (templateRows * templateCols);
+      TAvg[0] /= templateNumPixels;
+      TAvg[1] /= templateNumPixels;
+      TAvg[2] /= templateNumPixels;
       // Compute the average intensity of the image
       for (int r = 0; r < numRows; r++) {
         for (int c = 0; c < numCols; c++) {
-          IAvg += static_cast<float>(grayscaled[r][c]);
+          IAvg[0] += static_cast<float>(this->pixelData2D[r][c * 3 + 0]);
+          IAvg[1] += static_cast<float>(this->pixelData2D[r][c * 3 + 1]);
+          IAvg[2] += static_cast<float>(this->pixelData2D[r][c * 3 + 2]);
         }
       }
-      IAvg /= (numRows * numCols);
+      IAvg[0] /= numPixels;
+      IAvg[1] /= numPixels;
+      IAvg[2] /= numPixels;
     }
     // Track the window/score pairs
     std::unordered_map <std::pair<int, int>, float> windowScores;
     // The map key is a pair of (row, col) of the top-left pixel in the window and the value is the score
-    // Convolve over the grayscale image using a window with the size of the template
-    for (int r = 0; r < numRows; r++) {
-      for (int c = 0; c < numCols; c++) {
+    // Convolve over the image using a window with the size of the template
+    // std::cout << "Conducting image matching using " << method << " ..." << std::endl;
+    // Collapse the two loops for parallel processing
+// #pragma omp parallel for collapse(2)
+    for (int r = tRHalf; r < numRows - tRHalf; r++) {
+      for (int c = tCHalf; c < numCols - tCHalf; c++) {
         // Check if the template fits within the image bounds
         if (r - tRHalf < 0 || r + tRHalf >= numRows || c - tCHalf < 0 || c + tCHalf >= numCols) {
           continue; // Skip this pixel
         }
         // Compute the sum based on image matching method
-        float sum = 0.0f;
-        float IHat2Sum = 1e-6f; // Avoid division by zero
-        float THat2Sum = 1e-6f;
-        for (int tr = -tRHalf; tr <= tRHalf; tr++) {
-          for (int tc = -tCHalf; tc <= tCHalf; tc++) {
-            float I = static_cast<float>(grayscaled[r + tr][c + tc]); // Image pixel
-            float T = temp.get(tr + tRHalf, tc + tCHalf); // Template pixel
+        float sum[3] = {0.0f, 0.0f, 0.0f}; // Initialize sum for each channel
+        // Avoid division by zero
+        float IHat2Sum[3] = {1e-6f, 1e-6f, 1e-6f};
+        float THat2Sum[3] = {1e-6f, 1e-6f, 1e-6f};
+        for (int tr = 0; tr < templateRows; tr++) {
+          for (int tc = 0; tc < templateCols; tc++) {
+            int imageRow = r + tr - tRHalf; // Image row
+            int imageCol = c + tc - tCHalf; // Image column
+            // Collect Image and Template pixel values
+            float IBlue = static_cast<float>(this->pixelData2D[imageRow][imageCol * 3 + 0]);
+            float IGreen = static_cast<float>(this->pixelData2D[imageRow][imageCol * 3 + 1]);
+            float IRed = static_cast<float>(this->pixelData2D[imageRow][imageCol * 3 + 2]);
+            float I[] = {IBlue, IGreen, IRed};
+            float TBlue = temp.get(tr, tc, 0);
+            float TGreen = temp.get(tr, tc, 1);
+            float TRed = temp.get(tc, tc, 2);
+            float T[] = {TBlue, TGreen, TRed};
             if (method == "SSD") {
-              sum += this->sumOfSquaredDiff(I, T);
+              SumOfSquaredDiffResult SSD = this->sumOfSquaredDiff(I, T);
+              for (int i = 0; i < 3; i++) {
+                sum[i] += SSD.sum[i];
+              }
             } else if (method == "CC") {
-              sum += this->crossCorrelation(I, T);
+              CrossCorrelationResult CC = this->crossCorrelation(I, T);
+              for (int i = 0; i < 3; i++) {
+                sum[i] += CC.sum[i];
+              }
             } else if (method == "NCC") {
-              float IHat2 = 0.0f;
-              float THat2 = 0.0f;
-              sum += this->normalizedCrossCorrelation(I, T, IAvg, TAvg, IHat2, THat2);
-              IHat2Sum += IHat2;
-              THat2Sum += THat2;
+              NormCrossCorrelationResult NCC = this->normalizedCrossCorrelation(I, T, IAvg, TAvg);
+              for (int i = 0; i < 3; i++) {
+                sum[i] += NCC.numerator[i];
+                IHat2Sum[i] += NCC.IHat2[i];
+                THat2Sum[i] += NCC.THat2[i];
+              }
             }
           }
         }
         if (method == "NCC") {
           // Normalize the score
-          sum /= std::sqrt(IHat2Sum * THat2Sum);
+          for (int i = 0; i < 3; i++) {
+            sum[i] /= std::sqrt(IHat2Sum[i] * THat2Sum[i]);
+          }
         }
         // Store the score in the map
-        windowScores[std::make_pair(r, c)] = sum;
+        float score = (sum[0] + sum[1] + sum[2]) / 3; // Sum of all channels
+        if (method == "SSD") {
+          score = -score; // Invert the score for SSD
+        }
+        windowScores[std::make_pair(r, c)] = score; // Insert the score
       }
     }
-    std::cout << "Evaluated " << windowScores.size() << " windows" << std::endl;
+    // std::cout << "Evaluated " << windowScores.size() << " windows" << std::endl;
     // Find the best match (minimum score for SSD, maximum score for CC and NCC)
     std::pair<int, int> bestMatch; // Top-left pixel of the best match
     float bestScore = (method == "SSD") ? std::numeric_limits<float>::max() : std::numeric_limits<float>::lowest();
@@ -1345,18 +1410,22 @@ public:
         bestScore = pair.second;
       }
     }
-    std::cout << "Best match found at (" << bestMatch.first << ", " << bestMatch.second << ") with score: " << bestScore << std::endl;
+    // std::cout << "Best match found at (" << bestMatch.first << ", " << bestMatch.second << ") with score: " << bestScore << std::endl;
     // Draw a rectangle around the best match by modifying the pixel data
     // Use the template size to draw a 1 pixel border around the match
-    for (int tr = -tRHalf; tr <= tRHalf; tr++) {
-      for (int tc = -tCHalf; tc <= tCHalf; tc++) {
-        int r = bestMatch.first + tr;
-        int c = bestMatch.second + tc;
+    for (int tr = 0; tr < templateRows; tr++) {
+      for (int tc = 0; tc < templateCols; tc++) {
+        int r = bestMatch.first + tr - tRHalf;
+        int c = bestMatch.second + tc - tCHalf;
         // Check bounds before drawing
         if (r >= 0 && r < numRows && c >= 0 && c < numCols) {
-          this->pixelData2D[r][c * 3 + 0] = 255; // Blue
-          this->pixelData2D[r][c * 3 + 1] = 0;   // Green
-          this->pixelData2D[r][c * 3 + 2] = 0;   // Red
+          bool isBorder = (tr == 0 || tr == templateRows - 1 || tc == 0 || tc == templateCols - 1);
+          if (isBorder) {
+            // Draw border in red
+            this->pixelData2D[r][c * 3 + 0] = 0;   // Blue
+            this->pixelData2D[r][c * 3 + 1] = 0;   // Green
+            this->pixelData2D[r][c * 3 + 2] = 255; // Red
+          }
         }
       }
     }
@@ -1365,24 +1434,15 @@ public:
   void grayscale() {
     auto grayscaleImage = this->convertToGrayscaleImage();
     // Update the pixel data to grayscale
-    this->pixelData2D.clear();
-    this->pixelData2D.resize(grayscaleImage.size(), std::vector<uint8_t>(grayscaleImage[0].size(), 0));
+    // this->pixelData2D.clear();
+    this->pixelData2D.resize(grayscaleImage.size(), std::vector<uint8_t>(grayscaleImage[0].size() * 3, 0));
     for (unsigned int r = 0; r < grayscaleImage.size(); r++) {
       for (unsigned int c = 0; c < grayscaleImage[0].size(); c++) {
-        this->pixelData2D[r][c] = grayscaleImage[r][c];
+        this->pixelData2D[r][c * 3 + 0] = grayscaleImage[r][c];
+        this->pixelData2D[r][c * 3 + 1] = grayscaleImage[r][c];
+        this->pixelData2D[r][c * 3 + 2] = grayscaleImage[r][c];
       }
     }
-    // Update the BMP info header for 8-bit grayscale
-    this->infoHeader.bit_count = 8;
-    int rowSize = ((this->infoHeader.bit_count * this->infoHeader.width + 31) / 32) * 4;
-    this->infoHeader.size_image = rowSize * std::abs(this->infoHeader.height);
-    this->infoHeader.colors_used = 256; // 256 colors for grayscale
-    this->infoHeader.compression = 0; // No compression
-    this->infoHeader.size = sizeof(BMPInfoHeader);
-    // Update the file header offset to point to the new pixel data
-    this->fileHeader.offset_data = sizeof(BMPFileHeader) + sizeof(BMPInfoHeader);
-    // Update the file size
-    this->fileHeader.file_size = this->fileHeader.offset_data + this->infoHeader.size_image;
   }
 
 private:
@@ -1712,13 +1772,14 @@ private:
   std::string getImageName(const char* filename) {
     // Extract the image name from the filename
     // "test.bmp" -> "test"
+    // dir/img.jpg -> "img"
     std::string fname = filename;
     size_t pos = fname.find_last_of('/');
     if (pos != std::string::npos) {
       fname = fname.substr(pos + 1);
     }
     pos = fname.find_last_of('.');
-    if (pos != std::string::npos && fname.substr(pos) == ".bmp") {
+    if (pos != std::string::npos) {
       fname = fname.substr(0, pos);
     }
     return fname;
@@ -1973,7 +2034,7 @@ private:
       throw std::runtime_error("Error writing pixel data to " + std::string(filename));
     }
 
-    std::cout << "Successfully wrote " << pixelData.size() << " bytes to " << filename << std::endl;
+    // std::cout << "Successfully wrote " << pixelData.size() << " bytes to " << filename << std::endl;
 
     // Close the file
     output.close();

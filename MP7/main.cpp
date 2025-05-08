@@ -88,7 +88,7 @@ void bmp2png(const std::string file) {
   if (!cv::imwrite(pngFile, image)) {
     std::cerr << "Error writing PNG file: " << pngFile << std::endl;
   } else {
-    std::cout << "Converted " << file << " to " << pngFile << std::endl;
+    // std::cout << "Converted " << file << " to " << pngFile << std::endl;
   }
 }
 
@@ -102,8 +102,31 @@ std::vector<std::string> listFilesInDir(const std::string& dir, const std::strin
   if (images.empty()) {
     std::cerr << "No " << ext << " files found in directory: " << dir << std::endl;
   }
+  // Sort the images by name
+  std::sort(images.begin(), images.end(), [](const std::string& a, const std::string& b) {
+    return a < b;
+  });
   std::cout << "Found " << images.size() << " " << ext << " files in directory: " << dir << std::endl;
   return images;
+}
+
+void createVideo(const std::string& videoName) {
+  const std::string projectDir = "/home/sharwin/spring_2025/MSAI495/MP7/";
+  const std::string matchingMethod = videoName.substr(videoName.find("_") + 1);
+  const std::string outputDir = projectDir + "output" + matchingMethod + "/";
+  const std::string ffmpegCmd = "ffmpeg -framerate 30 -i " + outputDir + "%04d.bmp -c:v libx264 -pix_fmt yuv420p " + projectDir + "/" + videoName + ".mp4";
+  system(ffmpegCmd.c_str());
+  std::cout << "Video created: " << videoName << ".mp4" << std::endl;
+}
+
+void prepareOutputDir(const std::string& dir) {
+  // Create the output directory if it doesn't exist
+  if (!std::filesystem::exists(dir)) {
+    std::filesystem::create_directory(dir);
+    std::cout << "Created output directory: " << dir << std::endl;
+  } else {
+    std::cout << "Output directory already exists " << dir << std::endl;
+  }
 }
 
 int main() {
@@ -111,18 +134,25 @@ int main() {
   std::cout << "Using OpenCV Version: " << CV_VERSION << std::endl;
   std::cout << "Processing images" << std::endl;
   std::vector<std::string> images = listFilesInDir("image_girl/", ".jpg");
-  std::vector<BMPImage> bmpImages;
-  bmpImages.reserve(images.size());
   BMPImage targetImage("target.jpg");
-  // targetImage.grayscale();
   targetImage.save("target.bmp");
-  const std::string matchingMethod = "SSD"; // ["SSD", "CC", "NCC"]
-  for (const auto& image : images) {
-    BMPImage bmp(image.c_str());
-    // bmp.imageMatching(targetImage, "SSD");
-    bmp.save("output/" + bmp.getName() + ".bmp");
-    // bmpImages.push_back(bmp);
+  const std::vector<std::string> matchingMethods = {"SSD", "CC", "NCC"};
+  for (const auto& method : matchingMethods) {
+    try {
+      std::cout << "Using Matching Method: " << method << std::endl;
+      const std::string outputDir = "output" + method + "/";
+      prepareOutputDir(outputDir);
+      for (const auto& image : images) {
+        BMPImage bmp(image.c_str());
+        bmp.imageMatching(targetImage, method);
+        bmp.save(outputDir + bmp.getName() + ".bmp");
+      }
+      const std::string videoName = "tracking_" + method;
+      createVideo(videoName);
+    }
+    catch (const std::exception& e) {
+      std::cerr << "Error processing with method: " << method << ": " << e.what() << std::endl;
+    }
+    return 0;
   }
-
-  return 0;
 }
