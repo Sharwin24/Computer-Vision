@@ -114,7 +114,7 @@ void createVideo(const std::string& videoName) {
   const std::string projectDir = "/home/sharwin/spring_2025/MSAI495/MP7/";
   const std::string matchingMethod = videoName.substr(videoName.find("_") + 1);
   const std::string outputDir = projectDir + "output" + matchingMethod + "/";
-  const std::string ffmpegCmd = "ffmpeg -framerate 30 -i " + outputDir + "%04d.bmp -c:v libx264 -pix_fmt yuv420p " + projectDir + "/" + videoName + ".mp4";
+  const std::string ffmpegCmd = "ffmpeg -y -framerate 30 -i " + outputDir + "%04d.bmp -c:v libx264 -pix_fmt yuv420p " + projectDir + "/" + videoName + ".mp4";
   system(ffmpegCmd.c_str());
   std::cout << "Video created: " << videoName << ".mp4" << std::endl;
 }
@@ -139,6 +139,7 @@ int main() {
   const std::vector<std::string> matchingMethods = {"SSD", "CC", "NCC"};
   for (const auto& method : matchingMethods) {
     try {
+      auto start = std::chrono::high_resolution_clock::now();
       std::cout << "Using Matching Method: " << method << std::endl;
       const std::string outputDir = "output" + method + "/";
       prepareOutputDir(outputDir);
@@ -149,10 +150,15 @@ int main() {
       }
       const std::string videoName = "tracking_" + method;
       createVideo(videoName);
+      auto end = std::chrono::high_resolution_clock::now();
+      std::chrono::duration<double> elapsed = end - start;
+      int minutes = static_cast<int>(elapsed.count()) / 60;
+      double seconds = elapsed.count() - (minutes * 60);
+      std::cout << "Time taken for method " << method << ": " << minutes << " minutes and " << seconds << " seconds" << std::endl;
     }
     catch (const std::exception& e) {
       std::cerr << "Error processing with method: " << method << ": " << e.what() << std::endl;
     }
-    return 0;
   }
+  return 0;
 }
